@@ -1,0 +1,59 @@
+name: DART 공시 알림 시스템
+
+on:
+  # schedule:
+  #   # 장중 (9:00~18:00, 월~금): 5분마다 실행
+  #   - cron: '*/5 0-9 * * 1-5'
+  #   - cron: '*/5 10-18 * * 1-5'
+  #   
+  #   # 야간 (19:00~06:00): 30분마다 실행
+  #   - cron: '*/30 19-23 * * *'
+  #   - cron: '*/30 0-5 * * *'
+  
+  # 수동 트리거 허용 (테스트 중)
+  workflow_dispatch:
+
+jobs:
+  dart-notification:
+    runs-on: ubuntu-latest
+    
+    steps:
+      # 1단계: 저장소 체크아웃
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      # 2단계: Python 3.11 설정
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      # 3단계: 의존성 설치
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      # 4단계: DART 공시 알림 실행
+      - name: Run DART notification
+        env:
+          DART_API_KEY: ${{ secrets.DART_API_KEY }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
+        run: python main.py
+      
+      # 5단계: 변경사항 커밋 (sent.json 업데이트)
+      - name: Commit and push changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          
+          if [ -n "$(git status --porcelain)" ]; then
+            git add sent.json
+            git commit -m "📊 발송 이력 업데이트 ($(date +'%Y-%m-%d %H:%M:%S'))"
+            git push
+          else
+            echo "변경사항 없음"
+          fi
+        continue-on-error: true

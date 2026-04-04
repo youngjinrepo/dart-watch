@@ -1,0 +1,56 @@
+{
+  "comment": "DART 공시 알림 시스템 설정 - 환경 변수(DART_API_KEY, TELEGRAM_TOKEN, CHAT_ID)는 .env 파일에서 관리",
+  "sent_file": "sent.json",
+  "sent_file_comment": "발송 이력을 저장하는 JSON 파일 경로 (중복 발송 방지)",
+  "max_history": 100,
+  "max_history_comment": "발송 이력에서 최근 N개만 유지 (저장소 용량 절감)",
+  "dart_api_url": "https://opendart.fss.or.kr/api/list.json",
+  "dart_api_url_comment": "DART Open API 리스트 조회 기본 URL",
+  "api_page_count": 50,
+  "api_page_count_comment": "한 번에 조회할 공시 최대 건수 (최대 50개)",
+  "corp_codes": [
+    "00531014",
+    "100840",
+    "116440",
+    "005250",
+    "042700"
+  ],
+  "corp_codes_comment": "감시 대상 기업의 고유 코드 (유진테크 00531014, 메리츠 금융지주 100840, BYC 116440, 한미약품 005250)",
+  "corp_names": {
+    "00531014": "유진테크",
+    "100840": "메리츠금융",
+    "116440": "BYC",
+    "005250": "한미약품",
+    "042700": "힌미반도체"
+  },
+  "corp_names_comment": "뉴스 검색용 corp_code → 회사명 매핑 (비어있으면 DART API로 자동 조회)",
+  "keywords": [
+    ""
+  ],
+  "keywords_comment": "공시 제목에 포함된 키워드만 알림 (모두 대소문자 구분 없음, 빈 배열 시 모두 발송)",
+  "news": {
+    "enabled": false,
+    "enabled_comment": "뉴스 알림 기능 사용 여부",
+    "sources": ["naver"],
+    "sources_comment": "사용할 뉴스 소스 목록 (naver, example 등 - 소스 추가 시 news/sources/ 에 구현)",
+    "source_config": {
+      "naver": {
+        "enabled": true,
+        "display_per_query": 5,
+        "display_per_query_comment": "회사/키워드당 가져올 뉴스 개수 (최대 100)"
+      },
+      "example": {
+        "enabled": false,
+        "comment": "새 소스 추가 시 이 형식으로 설정"
+      }
+    },
+    "sent_file": "news_sent.json",
+    "sent_file_comment": "뉴스 발송 이력 (중복 방지)",
+    "max_history": 200,
+    "summary": {
+      "enabled": true,
+      "method": "simple",
+      "method_comment": "simple: 앞부분 추출, openai: OpenAI API 요약 (OPENAI_API_KEY 필요)"
+    }
+  }
+}
