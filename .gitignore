@@ -20,5 +20,8 @@ __pycache__/
 *.swp
 *.swo
 
+# AI
+.claude/
+
 # State file (will be versioned)
 # sent.json

@@ -16,6 +16,8 @@ on:
 jobs:
   dart-notification:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     
     steps:
       # 1단계: 저장소 체크아웃
