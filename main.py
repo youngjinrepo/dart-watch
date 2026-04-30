@@ -9,9 +9,10 @@ import os
 import json
 import requests
 from datetime import datetime
-from typing import List, Dict, Set
+from typing import List, Dict, Optional, Set
 from pathlib import Path
 from dotenv import load_dotenv
+from bs4 import BeautifulSoup
 
 
 # .env 파일 로드
@@ -57,6 +58,7 @@ DART_BASE_URL = CONFIG.get('dart_api_url', 'https://opendart.fss.or.kr/api/list.
 API_PAGE_COUNT = CONFIG.get('api_page_count', 50)
 CORP_CODES = CONFIG.get('corp_codes', [])
 KEYWORDS = CONFIG.get('keywords', [])
+SUMMARY_CFG = CONFIG.get('summary', {})
 
 
 def load_sent_history() -> Set[str]:
@@ -193,13 +195,56 @@ def filter_announcements(
     return filtered
 
 
-def build_message(announcement: Dict) -> str:
+def fetch_announcement_text(rcept_no: str) -> Optional[str]:
+    """DART 공시 원문 텍스트 조회"""
+    url = f"https://dart.fss.or.kr/cgi-bin/browse.cgi?action=html&rcept_no={rcept_no}"
+    try:
+        response = requests.get(url, timeout=10, headers={'User-Agent': 'Mozilla/5.0'})
+        response.raise_for_status()
+        response.encoding = 'utf-8'
+        soup = BeautifulSoup(response.text, 'html.parser')
+        for tag in soup(['script', 'style']):
+            tag.decompose()
+        text = soup.get_text(separator='\n', strip=True)
+        return text[:4000]
+    except Exception as e:
+        print(f"⚠️ 공시 원문 조회 실패: {e}")
+        return None
+
+
+def summarize_with_claude(text: str, corp_name: str, title: str) -> Optional[str]:
+    """Claude Haiku로 공시 요약"""
+    api_key = os.getenv('ANTHROPIC_API_KEY')
+    if not api_key:
+        return None
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=api_key)
+        response = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=300,
+            messages=[{
+                "role": "user",
+                "content": (
+                    f"{corp_name}의 '{title}' 공시입니다.\n"
+                    f"투자자 관점에서 핵심만 3줄 이내로 요약해주세요.\n\n{text}"
+                )
+            }]
+        )
+        return response.content[0].text.strip()
+    except Exception as e:
+        print(f"⚠️ Claude 요약 실패: {e}")
+        return None
+
+
+def build_message(announcement: Dict, summary: Optional[str] = None) -> str:
     """
     공시 정보를 Telegram 메시지로 변환
-    
+
     Args:
         announcement: 공시 정보 딕셔너리
-    
+        summary: Claude 요약 텍스트 (없으면 생략)
+
     Returns:
         str: Telegram 메시지
     """
@@ -207,19 +252,20 @@ def build_message(announcement: Dict) -> str:
     title = announcement.get('report_nm', 'No title')
     rcept_date = announcement.get('rcept_dt', 'N/A')
     rcept_no = announcement.get('rcept_no', '')
-    corp_code = announcement.get('corp_code', '')
-    
-    # DART 공시 링크 구성
-    # 작동하는 형식: https://dart.fss.or.kr/cgi-bin/browse.cgi?action=html&rcept_no=XXXXXXXXX
+
     dart_link = f"https://dart.fss.or.kr/cgi-bin/browse.cgi?action=html&rcept_no={rcept_no}"
-    
+
     message = (
         f"📰 <b>{corp_name}</b>\n"
         f"📋 {title}\n"
         f"📅 {rcept_date}\n"
-        f"🔗 <a href=\"{dart_link}\">공시 보기</a>"
     )
-    
+
+    if summary:
+        message += f"\n💡 {summary}\n"
+
+    message += f'\n🔗 <a href="{dart_link}">공시 보기</a>'
+
     return message
 
 
@@ -311,9 +357,17 @@ def main():
         corp_name = announcement.get('corp_name', 'Unknown')
         title = announcement.get('report_nm', '')
         
+        # 요약 생성 (설정 활성화 시)
+        summary = None
+        if SUMMARY_CFG.get('enabled') and SUMMARY_CFG.get('method') == 'claude':
+            print(f"  🤖 요약 중...")
+            text = fetch_announcement_text(rcept_no)
+            if text:
+                summary = summarize_with_claude(text, corp_name, title)
+
         # 메시지 생성 및 전송
-        message = build_message(announcement)
-        
+        message = build_message(announcement, summary)
+
         print(f"[{i}/{len(new_announcements)}] {corp_name} - {title}")
         
         if send_telegram_message(message):
