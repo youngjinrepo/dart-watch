@@ -3,9 +3,10 @@ name: 공모주(IPO) 수요예측 분석 알림
 on:
   schedule:
     # GitHub Actions cron은 UTC 기준 (KST = UTC + 9시간)
-    # 평일 하루 2번 실행: KST 13:00 (UTC 04:00), KST 18:30 (UTC 09:30)
-    - cron: '0 4 * * 1-5'
-    - cron: '30 9 * * 1-5'
+    # 평일 하루 3번 실행: KST 08:30 (UTC 전일 23:30), KST 16:00 (UTC 07:00), KST 20:00 (UTC 11:00)
+    - cron: '30 23 * * 0-4'  # KST 월~금 08:30
+    - cron: '0 7 * * 1-5'    # KST 월~금 16:00
+    - cron: '0 11 * * 1-5'   # KST 월~금 20:00
 
   # 수동 트리거 허용
   workflow_dispatch:
