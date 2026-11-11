@@ -1,0 +1,55 @@
+name: 미국 주식 밸류체인 레이더 (US News)
+
+on:
+  schedule:
+    # GitHub Actions cron은 UTC 기준 (KST = UTC + 9시간)
+    # 미국 정규장 마감 후 한국 시간 화~토 오전 08:00 (UTC 월~금 23:00) 하루 1회 브리핑
+    - cron: '0 23 * * 1-5'
+
+  # 수동 트리거 허용
+  workflow_dispatch:
+
+jobs:
+  us-news-radar:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      TZ: Asia/Seoul
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run US Stock Value-Chain Radar
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python news_main.py
+
+      - name: Commit and push changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+
+          if [ -n "$(git status --porcelain news_sent.json us_stock_profiles.json)" ]; then
+            git add news_sent.json us_stock_profiles.json
+            git commit -m "🇺🇸 미국 주식 뉴스 발송 이력 업데이트 ($(date +'%Y-%m-%d %H:%M:%S'))"
+            git pull --rebase origin main || true
+            git push
+          else
+            echo "변경사항 없음"
+          fi
+        continue-on-error: true

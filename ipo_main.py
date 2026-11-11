@@ -369,43 +369,48 @@ def analyze_ipo_with_gemini(extracted_text: str, corp_name: str, report_nm: str)
 {extracted_text}
 """
 
-    payload = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {
+    models = ["gemini-3-flash-preview", "gemini-2.5-flash", "gemini-3.1-flash-lite"]
+    for model_name in models:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
+        gen_cfg: Dict[str, Any] = {
             "maxOutputTokens": 2048,
             "temperature": 0.0,
             "responseMimeType": "application/json",
-            "thinkingConfig": {"thinkingBudget": 0},
-        },
-    }
+        }
+        if "flash-lite" not in model_name:
+            gen_cfg["thinkingConfig"] = {"thinkingBudget": 0}
+        payload = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": gen_cfg,
+        }
 
-    for attempt in range(1, 4):
-        try:
-            resp = requests.post(
-                url,
-                headers={"x-goog-api-key": GEMINI_API_KEY},
-                json=payload,
-                timeout=35,
-            )
-            if resp.status_code in (429, 503) and attempt < 3:
-                wait_sec = attempt * 3
-                print(f"⏳ Gemini 서버 일시 혼잡({resp.status_code}), {wait_sec}초 후 재시도 ({attempt}/3)...")
-                time.sleep(wait_sec)
-                continue
-            resp.raise_for_status()
-            data = resp.json()
-            candidates = data.get("candidates", [])
-            if not candidates:
-                return None
-            parts = candidates[0].get("content", {}).get("parts", [])
-            raw_json = "\n".join(p.get("text", "") for p in parts if not p.get("thought") and "text" in p).strip()
-            return json.loads(raw_json)
-        except Exception as e:
-            if attempt < 3:
-                time.sleep(2)
-                continue
-            print(f"⚠️ Gemini IPO 분석 실패 ({ e.__class__.__name__ }): 응답 오류")
-            return None
+        for attempt in range(1, 3):
+            try:
+                resp = requests.post(
+                    url,
+                    headers={"x-goog-api-key": GEMINI_API_KEY},
+                    json=payload,
+                    timeout=35,
+                )
+                if resp.status_code == 429:
+                    print(f"⏳ [{model_name}] 무료 쿼터 도달(429) -> 다음 모델로 자동 전환...")
+                    break
+                if resp.status_code == 503 and attempt < 2:
+                    time.sleep(3)
+                    continue
+                resp.raise_for_status()
+                data = resp.json()
+                candidates = data.get("candidates", [])
+                if not candidates:
+                    break
+                parts = candidates[0].get("content", {}).get("parts", [])
+                raw_json = "\n".join(p.get("text", "") for p in parts if not p.get("thought") and "text" in p).strip()
+                return json.loads(raw_json)
+            except Exception as e:
+                if attempt < 2:
+                    time.sleep(2)
+                    continue
+                print(f"⚠️ [{model_name}] IPO 분석 실패 ({e.__class__.__name__})")
     return None
 
 

@@ -378,44 +378,49 @@ def summarize_announcement(text: str, corp_name: str, title: str) -> Optional[st
 
 
 def summarize_with_gemini(text: str, corp_name: str, title: str) -> Optional[str]:
-    """Google Gemini API (gemini-2.5-flash)로 공시 요약"""
+    """Google Gemini API로 공시 요약 (무료 쿼터 초과 시 자동 모델 폴백)"""
     api_key = os.getenv('GEMINI_API_KEY', '').strip()
     if not api_key or api_key.startswith('your-'):
         return None
-    try:
-        url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
-        prompt = (
-            f"{corp_name}의 '{title}' 공시입니다.\n"
-            f"투자자 관점에서 핵심 수치와 내용을 3줄 이내의 개조식(•)으로 요약해주세요.\n"
-            f"마크다운 기호(**, #, * 등)는 사용하지 말고 순수 텍스트로만 작성해주세요.\n\n{text}"
-        )
-        payload = {
-            "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {
+    prompt = (
+        f"{corp_name}의 '{title}' 공시입니다.\n"
+        f"투자자 관점에서 핵심 수치와 내용을 3줄 이내의 개조식(•)으로 요약해주세요.\n"
+        f"마크다운 기호(**, #, * 등)는 사용하지 말고 순수 텍스트로만 작성해주세요.\n\n{text}"
+    )
+    models = ["gemini-3-flash-preview", "gemini-2.5-flash", "gemini-3.1-flash-lite"]
+    for model_name in models:
+        try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
+            gen_cfg: Dict[str, Any] = {
                 "maxOutputTokens": 1024,
                 "temperature": 0.2,
-                "thinkingConfig": {"thinkingBudget": 0},
-            },
-        }
-        response = requests.post(
-            url,
-            headers={"x-goog-api-key": api_key},
-            json=payload,
-            timeout=15,
-        )
-        response.raise_for_status()
-        data = response.json()
-        candidates = data.get("candidates", [])
-        if candidates:
-            parts = candidates[0].get("content", {}).get("parts", [])
-            texts = [p.get("text", "") for p in parts if not p.get("thought") and "text" in p]
-            result = "\n".join(texts).strip()
-            if result:
-                return result
-        return None
-    except Exception as e:
-        print(f"⚠️ Gemini 요약 실패: {e}")
-        return None
+            }
+            if "flash-lite" not in model_name:
+                gen_cfg["thinkingConfig"] = {"thinkingBudget": 0}
+            payload = {
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": gen_cfg,
+            }
+            response = requests.post(
+                url,
+                headers={"x-goog-api-key": api_key},
+                json=payload,
+                timeout=15,
+            )
+            if response.status_code == 429:
+                continue
+            response.raise_for_status()
+            data = response.json()
+            candidates = data.get("candidates", [])
+            if candidates:
+                parts = candidates[0].get("content", {}).get("parts", [])
+                texts = [p.get("text", "") for p in parts if not p.get("thought") and "text" in p]
+                result = "\n".join(texts).strip()
+                if result:
+                    return result
+        except Exception as e:
+            print(f"⚠️ Gemini 요약 실패 ({model_name}): {e}")
+    return None
 
 
 def summarize_with_claude(text: str, corp_name: str, title: str) -> Optional[str]:
