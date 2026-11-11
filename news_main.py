@@ -6,13 +6,16 @@
 """
 
 import os
+import html
 import json
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import List, Set
 from dotenv import load_dotenv
 
 import requests
+
+KST = timezone(timedelta(hours=9))
 
 load_dotenv()
 
@@ -26,20 +29,21 @@ def load_config():
         return json.load(f)
 
 
-def load_sent_history(sent_file: Path) -> Set[str]:
-    """발송한 뉴스 링크 목록"""
+def load_sent_history(sent_file: Path) -> List[str]:
+    """발송한 뉴스 링크 목록 (발송 순서 유지)"""
     if not sent_file.exists():
-        return set()
+        return []
     try:
         with open(sent_file, 'r', encoding='utf-8') as f:
             data = json.load(f)
-            return set(data) if isinstance(data, list) else set()
+            return [str(x) for x in data] if isinstance(data, list) else []
     except Exception:
-        return set()
+        return []
 
 
 def save_sent_history(sent_file: Path, links: List[str], max_history: int):
-    recent = links[-max_history:]
+    unique_ordered = list(dict.fromkeys(links))
+    recent = unique_ordered[-max_history:]
     with open(sent_file, 'w', encoding='utf-8') as f:
         json.dump(recent, f, ensure_ascii=False, indent=2)
 
@@ -60,9 +64,9 @@ def send_telegram(message: str) -> bool:
 
 def build_news_message(item, summary: str) -> str:
     return (
-        f"<b>[{item.query}]</b>\n"
-        f"{item.title}\n"
-        f"{summary}\n"
+        f"<b>[{html.escape(item.query)}]</b>\n"
+        f"{html.escape(item.title)}\n"
+        f"{html.escape(summary)}\n"
         f'<a href="{item.link}">기사 보기</a>'
     )
 
@@ -101,6 +105,7 @@ def main():
         return
 
     sent_history = load_sent_history(sent_file)
+    sent_set = set(sent_history)
     print(f"[INFO] 이전 발송 이력: {len(sent_history)}개")
     print(f"[INFO] 검색어: {', '.join(search_queries)}\n")
 
@@ -130,7 +135,7 @@ def main():
         except ValueError as e:
             print(f"[WARN] {source_id}: {e}")
 
-    new_items = [i for i in all_items if i.link not in sent_history]
+    new_items = [i for i in all_items if i.link not in sent_set]
     print(f"[INFO] 신규 뉴스: {len(new_items)}개\n")
 
     if not new_items:
@@ -149,11 +154,11 @@ def main():
             print("  [FAIL] 발송 실패")
 
     if successfully_sent:
-        updated = list(sent_history) + successfully_sent
+        updated = sent_history + successfully_sent
         save_sent_history(sent_file, updated, max_history)
-        print(f"\n[SAVE] 발송 이력 저장 완료 ({len(updated)}개)")
+        print(f"\n[SAVE] 발송 이력 저장 완료 ({min(len(updated), max_history)}개)")
 
-    print(f"\n[DONE] 뉴스 알림 완료 ({datetime.now().isoformat()})")
+    print(f"\n[DONE] 뉴스 알림 완료 ({datetime.now(KST).isoformat()})")
 
 
 if __name__ == '__main__':

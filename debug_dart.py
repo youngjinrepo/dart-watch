@@ -53,9 +53,9 @@ for corp_code, info in sorted(corp_groups.items(), key=lambda x: x[1]['count'], 
         print(f"    ... 외 {len(info['reports']) - 2}개")
     print()
 
-# 삼성전자 확인
-samsung = corp_groups.get('005930', {})
-if samsung:
-    print(f"✅ 삼성전자(005930) 발견: {samsung['count']}개")
+# 메리츠금융지주 확인
+meritz = corp_groups.get('00860332', {})
+if meritz:
+    print(f"✅ 메리츠금융지주(00860332) 발견: {meritz['count']}개")
 else:
-    print(f"❌ 삼성전자(005930) 없음 (오늘 공시 없을 수 있음)")
+    print(f"❌ 메리츠금융지주(00860332) 없음 (오늘 공시 없을 수 있음)")

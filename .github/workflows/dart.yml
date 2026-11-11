@@ -2,13 +2,12 @@ name: DART 공시 알림 시스템
 
 on:
   schedule:
-    # 장중 (9:00~18:00, 월~금): 5분마다 실행
-    - cron: '*/5 0-9 * * 1-5'
-    - cron: '*/5 10-18 * * 1-5'
-    
-    # 야간 (19:00~06:00): 30분마다 실행
-    - cron: '*/30 19-23 * * *'
-    - cron: '*/30 0-5 * * *'
+    # GitHub Actions cron은 UTC 기준 (KST = UTC + 9시간)
+    # DART 공시 접수/공개 시간(평일 KST 08:00~19:00 = UTC 23:00~10:00)에만 실행
+    # (19시 이후 제출분은 익일 07:30 이후 공개되므로 야간/새벽/주말 불필요 실행 제거)
+    - cron: '*/15 23 * * 0-4'   # KST 월~금 08:00 ~ 08:45 (15분 간격)
+    - cron: '*/15 0-9 * * 1-5'  # KST 월~금 09:00 ~ 18:45 (15분 간격)
+    - cron: '0 10 * * 1-5'      # KST 월~금 19:00 마감 확인
   
   # 수동 트리거 허용
   workflow_dispatch:
@@ -18,6 +17,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      TZ: Asia/Seoul
     
     steps:
       # 1단계: 저장소 체크아웃
@@ -43,6 +44,7 @@ jobs:
           DART_API_KEY: ${{ secrets.DART_API_KEY }}
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: python main.py
       
@@ -52,9 +54,10 @@ jobs:
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           
-          if [ -n "$(git status --porcelain)" ]; then
+          if [ -n "$(git status --porcelain sent.json)" ]; then
             git add sent.json
             git commit -m "📊 발송 이력 업데이트 ($(date +'%Y-%m-%d %H:%M:%S'))"
+            git pull --rebase origin main || true
             git push
           else
             echo "변경사항 없음"

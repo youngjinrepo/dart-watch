@@ -6,13 +6,25 @@ DART 공시 자동 알림 시스템
 """
 
 import os
+import io
+import re
+import sys
+import html
 import json
+import zipfile
+import argparse
+import warnings
 import requests
-from datetime import datetime
-from typing import List, Dict, Optional, Set
+from datetime import datetime, timedelta, timezone
+from typing import List, Dict, Optional
 from pathlib import Path
 from dotenv import load_dotenv
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning
+
+warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
+
+# 한국 표준시 (KST, UTC+9)
+KST = timezone(timedelta(hours=9))
 
 
 # .env 파일 로드
@@ -55,96 +67,129 @@ CONFIG = load_config()
 SENT_FILE = Path(CONFIG.get('sent_file', 'sent.json'))
 MAX_HISTORY = CONFIG.get('max_history', 100)
 DART_BASE_URL = CONFIG.get('dart_api_url', 'https://opendart.fss.or.kr/api/list.json')
-API_PAGE_COUNT = CONFIG.get('api_page_count', 50)
+API_PAGE_COUNT = min(CONFIG.get('api_page_count', 100), 100)
 CORP_CODES = CONFIG.get('corp_codes', [])
 KEYWORDS = CONFIG.get('keywords', [])
 SUMMARY_CFG = CONFIG.get('summary', {})
 
 
-def load_sent_history() -> Set[str]:
+def load_sent_history() -> List[str]:
     """
-    이미 발송한 rcept_no 목록 로드
+    이미 발송한 rcept_no 목록 로드 (발송 순서 유지)
     
     Returns:
-        Set[str]: 발송 완료한 rcept_no 세트
+        List[str]: 발송 완료한 rcept_no 리스트
     """
     if not SENT_FILE.exists():
-        return set()
+        return []
     
     try:
         with open(SENT_FILE, 'r', encoding='utf-8') as f:
             data = json.load(f)
-            # 리스트 또는 딕셔너리 형태 모두 지원
             if isinstance(data, list):
-                return set(data)
-            return set()
+                return [str(item) for item in data]
+            return []
     except Exception as e:
         print(f"⚠️ 발송 이력 로드 실패: {e}")
-        return set()
+        return []
 
 
 def save_sent_history(rcept_nos: List[str]) -> None:
     """
-    발송한 rcept_no 목록 저장 (최근 N개만 유지)
+    발송한 rcept_no 목록 저장 (순서 유지, 중복 제거 후 최근 N개만 유지)
     
     Args:
         rcept_nos: 발송한 rcept_no 리스트
     """
     try:
-        # 최근 MAX_HISTORY개만 유지
-        recent = rcept_nos[-MAX_HISTORY:]
+        unique_ordered = list(dict.fromkeys(rcept_nos))
+        recent = unique_ordered[-MAX_HISTORY:]
         with open(SENT_FILE, 'w', encoding='utf-8') as f:
             json.dump(recent, f, ensure_ascii=False, indent=2)
     except Exception as e:
         print(f"❌ 발송 이력 저장 실패: {e}")
 
 
-def fetch_dart_announcements() -> List[Dict]:
+def _fetch_paginated_list(bgn_de: str, end_de: str, corp_code: Optional[str] = None) -> List[Dict]:
+    """DART list.json 페이지네이션 조회 헬퍼"""
+    results: List[Dict] = []
+    page_no = 1
+    max_pages = 30  # 최대 3,000건
+
+    while page_no <= max_pages:
+        params = {
+            'crtfc_key': DART_API_KEY,
+            'bgn_de': bgn_de,
+            'end_de': end_de,
+            'page_no': page_no,
+            'page_count': API_PAGE_COUNT,
+        }
+        if corp_code:
+            params['corp_code'] = corp_code
+
+        response = requests.get(DART_BASE_URL, params=params, timeout=10)
+        response.raise_for_status()
+
+        data = response.json()
+        status = data.get('status')
+
+        # 013: 조회된 데이터가 없음
+        if status == '013':
+            break
+
+        if status != '000':
+            print(f"⚠️ DART API 에러 (page {page_no}): {data.get('message', 'Unknown error')}")
+            break
+
+        page_list = data.get('list', [])
+        results.extend(page_list)
+
+        total_page = data.get('total_page', 1)
+        if page_no >= total_page or not page_list:
+            break
+
+        page_no += 1
+
+    return results
+
+
+def fetch_dart_announcements(days: Optional[int] = None) -> List[Dict]:
     """
-    DART API에서 공시 목록 조회
+    DART API에서 공시 목록 조회 (KST 기준)
+    - days 지정 시: 최근 N일간 조회 (테스트용)
     - 평일: 당일 공시만
     - 주말(토/일): 금요일부터 당일까지
+    - 감시 대상 기업이 소수(1~5개)면 기업 코드 지정 조회, 아니면 전체 조회
     
     Returns:
         List[Dict]: 공시 정보 리스트
     """
     try:
-        today = datetime.now()
+        today = datetime.now(KST)
         
-        # 주말인 경우 금요일부터, 평일인 경우 당일
-        if today.weekday() >= 5:  # 5=토요일, 6=일요일
-            # 금요일로 설정 (오늘부터 금요일까지의 차이 계산)
+        if days is not None and days > 0:
+            start_date = today - timedelta(days=days)
+            end_date = today
+        elif today.weekday() >= 5:  # 5=토요일, 6=일요일
             days_to_friday = today.weekday() - 4  # 토요일:1, 일요일:2
-            start_date = today - __import__('datetime').timedelta(days=days_to_friday)
+            start_date = today - timedelta(days=days_to_friday)
             end_date = today
         else:
-            # 평일: 당일만
             start_date = today
             end_date = today
         
         bgn_de = start_date.strftime('%Y%m%d')
         end_de = end_date.strftime('%Y%m%d')
         
-        print(f"📅 조회 기간: {bgn_de} ~ {end_de}")
+        print(f"📅 조회 기간 (KST): {bgn_de} ~ {end_de}")
         
-        params = {
-            'crtfc_key': DART_API_KEY,
-            'bgn_de': bgn_de,  # 시작 일자
-            'end_de': end_de,  # 종료 일자
-            'page_count': API_PAGE_COUNT,  # 1회 조회 최대 50개
-        }
+        announcements: List[Dict] = []
+        if 1 <= len(CORP_CODES) <= 5:
+            for code in CORP_CODES:
+                announcements.extend(_fetch_paginated_list(bgn_de, end_de, corp_code=code))
+        else:
+            announcements = _fetch_paginated_list(bgn_de, end_de)
         
-        response = requests.get(DART_BASE_URL, params=params, timeout=10)
-        response.raise_for_status()
-        
-        data = response.json()
-        
-        # API 성공 여부 확인
-        if data.get('status') != '000':
-            print(f"⚠️ DART API 에러: {data.get('message', 'Unknown error')}")
-            return []
-        
-        announcements = data.get('list', [])
         print(f"📊 조회된 공시 총 {len(announcements)}개")
         
         return announcements
@@ -175,18 +220,23 @@ def filter_announcements(
     """
     filtered = []
     
-    # 기업 코드 필터링
-    code_match = [ann for ann in announcements if ann.get('corp_code', '') in corp_codes]
+    # 기업 코드 필터링 (빈 배열이면 전체 기업 허용)
+    if corp_codes:
+        code_match = [ann for ann in announcements if ann.get('corp_code', '') in corp_codes]
+    else:
+        code_match = list(announcements)
     print(f"📌 기업 코드 필터링: {len(announcements)} → {len(code_match)}개")
     if code_match:
         print(f"   샘플: {code_match[0].get('corp_name', 'N/A')} - {code_match[0].get('report_nm', 'N/A')}")
     
+    # 유효 키워드 추출 (공백/빈 문자열 제외)
+    valid_keywords = [k.strip() for k in (keywords or []) if k and k.strip()]
+    
     for ann in code_match:
-        corp_code = ann.get('corp_code', '')
         title = ann.get('report_nm', '')
         
-        # 키워드 필터링 (하나라도 포함되면 통과)
-        if not any(keyword.lower() in title.lower() for keyword in keywords):
+        # 키워드 필터링 (유효 키워드가 있을 때만 필터링, 하나라도 포함되면 통과)
+        if valid_keywords and not any(keyword.lower() in title.lower() for keyword in valid_keywords):
             continue
         
         filtered.append(ann)
@@ -195,27 +245,183 @@ def filter_announcements(
     return filtered
 
 
+def _extract_clean_text(raw_bytes: bytes) -> str:
+    """HTML/XML 바이트에서 불필요한 태그 제거 후 텍스트 추출"""
+    soup = BeautifulSoup(raw_bytes, 'html.parser')
+    for tag in soup(['script', 'style']):
+        tag.decompose()
+    return soup.get_text(separator='\n', strip=True)
+
+
 def fetch_announcement_text(rcept_no: str) -> Optional[str]:
-    """DART 공시 원문 텍스트 조회"""
-    url = f"https://dart.fss.or.kr/cgi-bin/browse.cgi?action=html&rcept_no={rcept_no}"
+    """
+    DART 공시 원문 텍스트 조회
+    1차: DART Open API (document.xml ZIP 다운로드)
+    2차 (fallback): DART 웹 뷰어 (dsaf001/main.do -> report/viewer.do)
+    """
+    # 1차: DART Open API 공시서류원문파일 조회
+    if DART_API_KEY:
+        try:
+            doc_url = "https://opendart.fss.or.kr/api/document.xml"
+            resp = requests.get(
+                doc_url,
+                params={'crtfc_key': DART_API_KEY, 'rcept_no': rcept_no},
+                timeout=15,
+            )
+            resp.raise_for_status()
+            if resp.content[:2] == b'PK':  # ZIP 시그니처 확인
+                with zipfile.ZipFile(io.BytesIO(resp.content)) as z:
+                    for name in z.namelist():
+                        raw_bytes = z.read(name)
+                        text = _extract_clean_text(raw_bytes)
+                        if text:
+                            return text[:4000]
+        except Exception as e:
+            print(f"⚠️ OpenAPI 원문 조회 실패 (웹 뷰어로 재시도): {e}")
+
+    # 2차: DART 웹 뷰어 스크래핑 (fallback)
+    main_url = f"https://dart.fss.or.kr/dsaf001/main.do?rcpNo={rcept_no}"
+    headers = {'User-Agent': 'Mozilla/5.0'}
     try:
-        response = requests.get(url, timeout=10, headers={'User-Agent': 'Mozilla/5.0'})
-        response.raise_for_status()
-        response.encoding = 'utf-8'
-        soup = BeautifulSoup(response.text, 'html.parser')
-        for tag in soup(['script', 'style']):
-            tag.decompose()
-        text = soup.get_text(separator='\n', strip=True)
-        return text[:4000]
+        main_resp = requests.get(main_url, timeout=10, headers=headers)
+        main_resp.raise_for_status()
+        match = re.search(
+            r'viewDoc\(["\'](\d+)["\']\s*,\s*["\'](\d+)["\']\s*,\s*["\']([^"\']*)["\']\s*,\s*["\']([^"\']*)["\']\s*,\s*["\']([^"\']*)["\']\s*,\s*["\']([^"\']*)["\']',
+            main_resp.text,
+        )
+        if not match:
+            return None
+
+        params = {
+            'rcpNo': match.group(1),
+            'dcmNo': match.group(2),
+            'eleId': match.group(3),
+            'offset': match.group(4),
+            'length': match.group(5),
+            'dtd': match.group(6),
+        }
+        viewer_resp = requests.get(
+            "https://dart.fss.or.kr/report/viewer.do",
+            params=params,
+            timeout=10,
+            headers=headers,
+        )
+        viewer_resp.raise_for_status()
+        text = _extract_clean_text(viewer_resp.content)
+        return text[:4000] if text else None
     except Exception as e:
         print(f"⚠️ 공시 원문 조회 실패: {e}")
         return None
 
 
+def summarize_simple(text: str, max_len: int = 350) -> Optional[str]:
+    """
+    AI API 키가 없을 때 공시 원문에서 핵심 내용을 발췌
+    - 상단 문서 헤더(회사명/공시명 등) 및 빈 값('-') 라인을 정리하고 항목별로 한 줄씩 묶어 가독성 개선
+    """
+    if not text:
+        return None
+
+    lines = [re.sub(r'\s+', ' ', line).strip() for line in text.splitlines()]
+    lines = [line for line in lines if line and line != '-']
+
+    # 첫 줄이 '회사명/보고서명/(날짜)...' 형태면 제거
+    if lines and '/' in lines[0] and '(' in lines[0]:
+        lines = lines[1:]
+
+    # 두 번째 줄이 단순 보고서 제목 반복이면 제거
+    if len(lines) >= 2 and len(lines[0]) < 40 and not re.match(r'^\d+\.', lines[0]):
+        lines = lines[1:]
+
+    # 번호('1. ', '2. ')나 기호('-', '※')로 시작하는 줄을 기준으로 항목 병합
+    merged: List[str] = []
+    for line in lines:
+        if re.match(r'^(\d+\.|[-※•])', line):
+            merged.append(line)
+        elif merged:
+            # 이전 줄이 번호 항목이고 아직 콜론(':')이 없으면 ': '로 연결, 아니면 공백으로 연결
+            if re.match(r'^\d+\.', merged[-1]) and ':' not in merged[-1]:
+                merged[-1] = f"{merged[-1]}: {line}"
+            else:
+                merged[-1] = f"{merged[-1]} {line}"
+        else:
+            merged.append(line)
+
+    # 값이 비어 있는 번호 항목(예: '4. 시가배당률(%): 보통주식 종류주식') 정리 후 결합
+    result = '\n'.join(merged).strip()
+    if not result:
+        return None
+    if len(result) > max_len:
+        return result[:max_len].rstrip() + '…'
+    return result
+
+
+def summarize_announcement(text: str, corp_name: str, title: str) -> Optional[str]:
+    """설정에 따라 공시 요약 생성 (API 키 미설정/실패 시 simple 원문 발췌로 자동 대체)"""
+    if not text or not SUMMARY_CFG.get('enabled', True):
+        return None
+
+    method = SUMMARY_CFG.get('method', 'gemini')
+    if method == 'none':
+        return None
+
+    if method == 'gemini':
+        gemini_summary = summarize_with_gemini(text, corp_name, title)
+        if gemini_summary:
+            return gemini_summary
+    elif method == 'claude':
+        claude_summary = summarize_with_claude(text, corp_name, title)
+        if claude_summary:
+            return claude_summary
+
+    return summarize_simple(text)
+
+
+def summarize_with_gemini(text: str, corp_name: str, title: str) -> Optional[str]:
+    """Google Gemini API (gemini-2.5-flash)로 공시 요약"""
+    api_key = os.getenv('GEMINI_API_KEY', '').strip()
+    if not api_key or api_key.startswith('your-'):
+        return None
+    try:
+        url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+        prompt = (
+            f"{corp_name}의 '{title}' 공시입니다.\n"
+            f"투자자 관점에서 핵심 수치와 내용을 3줄 이내의 개조식(•)으로 요약해주세요.\n"
+            f"마크다운 기호(**, #, * 등)는 사용하지 말고 순수 텍스트로만 작성해주세요.\n\n{text}"
+        )
+        payload = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {
+                "maxOutputTokens": 1024,
+                "temperature": 0.2,
+                "thinkingConfig": {"thinkingBudget": 0},
+            },
+        }
+        response = requests.post(
+            url,
+            headers={"x-goog-api-key": api_key},
+            json=payload,
+            timeout=15,
+        )
+        response.raise_for_status()
+        data = response.json()
+        candidates = data.get("candidates", [])
+        if candidates:
+            parts = candidates[0].get("content", {}).get("parts", [])
+            texts = [p.get("text", "") for p in parts if not p.get("thought") and "text" in p]
+            result = "\n".join(texts).strip()
+            if result:
+                return result
+        return None
+    except Exception as e:
+        print(f"⚠️ Gemini 요약 실패: {e}")
+        return None
+
+
 def summarize_with_claude(text: str, corp_name: str, title: str) -> Optional[str]:
     """Claude Haiku로 공시 요약"""
-    api_key = os.getenv('ANTHROPIC_API_KEY')
-    if not api_key:
+    api_key = os.getenv('ANTHROPIC_API_KEY', '').strip()
+    if not api_key or api_key.startswith('your-'):
         return None
     try:
         import anthropic
@@ -248,12 +454,16 @@ def build_message(announcement: Dict, summary: Optional[str] = None) -> str:
     Returns:
         str: Telegram 메시지
     """
-    corp_name = announcement.get('corp_name', 'Unknown')
-    title = announcement.get('report_nm', 'No title')
-    rcept_date = announcement.get('rcept_dt', 'N/A')
-    rcept_no = announcement.get('rcept_no', '')
+    raw_corp = announcement.get('corp_name', 'Unknown').strip()
+    raw_title = re.sub(r'\s+', ' ', announcement.get('report_nm', 'No title')).strip()
+    raw_date = announcement.get('rcept_dt', 'N/A').strip()
 
-    dart_link = f"https://dart.fss.or.kr/cgi-bin/browse.cgi?action=html&rcept_no={rcept_no}"
+    corp_name = html.escape(raw_corp)
+    title = html.escape(raw_title)
+    rcept_date = html.escape(raw_date)
+    rcept_no = announcement.get('rcept_no', '').strip()
+
+    dart_link = f"https://dart.fss.or.kr/dsaf001/main.do?rcpNo={rcept_no}"
 
     message = (
         f"📰 <b>{corp_name}</b>\n"
@@ -262,7 +472,7 @@ def build_message(announcement: Dict, summary: Optional[str] = None) -> str:
     )
 
     if summary:
-        message += f"\n💡 {summary}\n"
+        message += f"\n💡 {html.escape(summary)}\n"
 
     message += f'\n🔗 <a href="{dart_link}">공시 보기</a>'
 
@@ -306,25 +516,39 @@ def send_telegram_message(message: str) -> bool:
 
 def main():
     """메인 실행 함수"""
-    
+    parser = argparse.ArgumentParser(description="DART 공시 알림 시스템")
+    parser.add_argument("--dry-run", action="store_true", help="Telegram 발송 및 이력 저장 없이 콘솔에 메시지 출력")
+    parser.add_argument("--days", type=int, default=None, help="최근 N일간 공시 조회 (테스트용)")
+    args = parser.parse_args()
+
     # 환경 변수 확인
-    if not all([DART_API_KEY, TELEGRAM_TOKEN, CHAT_ID]):
-        print("❌ 필수 환경 변수 누락:")
-        print(f"  - DART_API_KEY: {bool(DART_API_KEY)}")
-        print(f"  - TELEGRAM_TOKEN: {bool(TELEGRAM_TOKEN)}")
-        print(f"  - CHAT_ID: {bool(CHAT_ID)}")
+    telegram_ready = bool(
+        TELEGRAM_TOKEN and not TELEGRAM_TOKEN.startswith('your-')
+        and CHAT_ID and not CHAT_ID.startswith('your-')
+    )
+    if not DART_API_KEY or DART_API_KEY.startswith('your-'):
+        print("❌ 필수 환경 변수 누락: DART_API_KEY")
+        return
+
+    if not args.dry_run and not telegram_ready:
+        print("❌ 필수 환경 변수 누락 (또는 테스트 실행 시 --dry-run 옵션을 사용하세요):")
+        print(f"  - TELEGRAM_TOKEN 설정됨: {bool(TELEGRAM_TOKEN and not TELEGRAM_TOKEN.startswith('your-'))}")
+        print(f"  - CHAT_ID 설정됨: {bool(CHAT_ID and not CHAT_ID.startswith('your-'))}")
         return
     
-    print(f"🚀 DART 공시 알림 시스템 시작 ({datetime.now().isoformat()})")
-    print(f"📍 감시 대상: {', '.join(CORP_CODES)}")
-    print(f"🔑 필터 키워드: {', '.join(KEYWORDS)}\n")
+    print(f"🚀 DART 공시 알림 시스템 시작 ({datetime.now(KST).isoformat()})")
+    if args.dry_run:
+        print("🧪 [DRY-RUN 모드] Telegram 발송 및 sent.json 저장을 건너뜁니다.")
+    print(f"📍 감시 대상: {', '.join(CORP_CODES) if CORP_CODES else '전체'}")
+    print(f"🔑 필터 키워드: {', '.join(k for k in KEYWORDS if k) or '없음 (전체 공시)'}\n")
     
     # 1단계: 발송 이력 로드
     sent_history = load_sent_history()
+    sent_set = set(sent_history)
     print(f"📂 이전 발송 이력: {len(sent_history)}개")
     
     # 2단계: DART API에서 공시 조회
-    announcements = fetch_dart_announcements()
+    announcements = fetch_dart_announcements(days=args.days)
     
     if not announcements:
         print("⏭️ 조회된 공시가 없습니다")
@@ -337,10 +561,10 @@ def main():
         print("⏭️ 필터링 조건에 맞는 공시가 없습니다")
         return
     
-    # 4단계: 중복 제거 및 전송
+    # 4단계: 중복 제거 (오래된 공시부터 시간순 발송을 위해 역순 정렬)
     new_announcements = [
-        ann for ann in filtered
-        if ann.get('rcept_no') not in sent_history
+        ann for ann in reversed(filtered)
+        if ann.get('rcept_no') not in sent_set
     ]
     
     print(f"✨ 신규 공시: {len(new_announcements)}개\n")
@@ -353,37 +577,42 @@ def main():
     successfully_sent = []
     
     for i, announcement in enumerate(new_announcements, 1):
-        rcept_no = announcement.get('rcept_no', '')
-        corp_name = announcement.get('corp_name', 'Unknown')
-        title = announcement.get('report_nm', '')
+        rcept_no = announcement.get('rcept_no', '').strip()
+        corp_name = announcement.get('corp_name', 'Unknown').strip()
+        title = re.sub(r'\s+', ' ', announcement.get('report_nm', '')).strip()
         
         # 요약 생성 (설정 활성화 시)
         summary = None
-        if SUMMARY_CFG.get('enabled') and SUMMARY_CFG.get('method') == 'claude':
-            print(f"  🤖 요약 중...")
+        if SUMMARY_CFG.get('enabled') and SUMMARY_CFG.get('method') != 'none':
+            print(f"  🤖 요약 추출 중...")
             text = fetch_announcement_text(rcept_no)
             if text:
-                summary = summarize_with_claude(text, corp_name, title)
+                summary = summarize_announcement(text, corp_name, title)
 
         # 메시지 생성 및 전송
         message = build_message(announcement, summary)
 
         print(f"[{i}/{len(new_announcements)}] {corp_name} - {title}")
         
-        if send_telegram_message(message):
+        if args.dry_run:
+            print("  📨 [DRY-RUN 메시지 미리보기]")
+            for line in message.splitlines():
+                print(f"     {line}")
+            print()
+        elif send_telegram_message(message):
             print(f"  ✅ 발송 완료 (rcept_no: {rcept_no})")
             successfully_sent.append(rcept_no)
         else:
             print(f"  ❌ 발송 실패")
     
     # 6단계: 발송 이력 업데이트
-    if successfully_sent:
-        # 기존 이력 + 새로운 발송 이력
-        updated_history = list(sent_history) + successfully_sent
+    if successfully_sent and not args.dry_run:
+        # 기존 이력(순서 보장) + 새로운 발송 이력
+        updated_history = sent_history + successfully_sent
         save_sent_history(updated_history)
-        print(f"\n💾 발송 이력 저장 완료 ({len(updated_history)}개)")
+        print(f"\n💾 발송 이력 저장 완료 ({min(len(updated_history), MAX_HISTORY)}개)")
     
-    print(f"\n✨ 작업 완료 ({datetime.now().isoformat()})")
+    print(f"\n✨ 작업 완료 ({datetime.now(KST).isoformat()})")
 
 
 if __name__ == '__main__':

@@ -13,17 +13,19 @@ from .base import NewsItem
 SIMPLE_SUMMARY_LEN = 150
 
 
-def summarize(item: NewsItem, method: str = 'simple') -> str:
+def summarize(item: NewsItem, method: str = 'gemini') -> str:
     """
     뉴스 요약
 
     Args:
         item: 뉴스 아이템
-        method: simple | openai
+        method: gemini | openai | simple
 
     Returns:
         요약된 텍스트
     """
+    if method == 'gemini':
+        return _summarize_gemini(item) or _summarize_simple(item)
     if method == 'openai':
         return _summarize_openai(item) or _summarize_simple(item)
     return _summarize_simple(item)
@@ -35,6 +37,50 @@ def _summarize_simple(item: NewsItem) -> str:
     if len(text) <= SIMPLE_SUMMARY_LEN:
         return text
     return text[:SIMPLE_SUMMARY_LEN].rstrip() + '…'
+
+
+def _summarize_gemini(item: NewsItem) -> Optional[str]:
+    """Gemini API로 요약 (GEMINI_API_KEY 필요)"""
+    api_key = os.getenv('GEMINI_API_KEY', '').strip()
+    if not api_key or api_key.startswith('your-'):
+        return None
+
+    try:
+        text = (item.description or item.title or '').strip()
+        if not text or len(text) < 50:
+            return _summarize_simple(item)
+
+        url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+        payload = {
+            "contents": [{
+                "parts": [{
+                    "text": f"다음 뉴스 내용을 마크다운 기호 없이 한국어로 2~3문장으로 핵심만 요약해주세요.\n\n{text[:3000]}"
+                }]
+            }],
+            "generationConfig": {
+                "maxOutputTokens": 1024,
+                "temperature": 0.2,
+                "thinkingConfig": {"thinkingBudget": 0},
+            },
+        }
+        response = requests.post(
+            url,
+            headers={"x-goog-api-key": api_key},
+            json=payload,
+            timeout=15,
+        )
+        response.raise_for_status()
+        data = response.json()
+        candidates = data.get("candidates", [])
+        if candidates:
+            parts = candidates[0].get("content", {}).get("parts", [])
+            texts = [p.get("text", "") for p in parts if not p.get("thought") and "text" in p]
+            result = "\n".join(texts).strip()
+            if result:
+                return result
+        return None
+    except Exception:
+        return None
 
 
 def _summarize_openai(item: NewsItem) -> Optional[str]:

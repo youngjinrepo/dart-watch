@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 load_dotenv()
 DART_API_KEY = os.getenv('DART_API_KEY')
 
-COMPANIES = ['메리츠금융지주', 'BYC', '한미약품', '한미반도체']
+COMPANIES = ['메리츠금융지주']
 
 print("📥 DART 전체 기업 코드 목록 다운로드 중...")
 resp = requests.get(

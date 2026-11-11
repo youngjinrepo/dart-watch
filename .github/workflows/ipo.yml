@@ -1,0 +1,57 @@
+name: 공모주(IPO) 수요예측 분석 알림
+
+on:
+  schedule:
+    # GitHub Actions cron은 UTC 기준 (KST = UTC + 9시간)
+    # 평일 하루 2번 실행: KST 13:00 (UTC 04:00), KST 18:30 (UTC 09:30)
+    - cron: '0 4 * * 1-5'
+    - cron: '30 9 * * 1-5'
+
+  # 수동 트리거 허용
+  workflow_dispatch:
+
+jobs:
+  ipo-notification:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      TZ: Asia/Seoul
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run IPO demand forecast analysis
+        env:
+          DART_API_KEY: ${{ secrets.DART_API_KEY }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python ipo_main.py
+
+      - name: Commit and push changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+
+          if [ -n "$(git status --porcelain ipo_sent.json)" ]; then
+            git add ipo_sent.json
+            git commit -m "🏛️ 공모주 발송 이력 업데이트 ($(date +'%Y-%m-%d %H:%M:%S'))"
+            git pull --rebase origin main || true
+            git push
+          else
+            echo "변경사항 없음"
+          fi
+        continue-on-error: true
