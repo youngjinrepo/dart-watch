@@ -80,6 +80,7 @@ def load_news_state(path: Path) -> Dict[str, List[str]]:
     뉴스 및 SEC 공시 발송/검토 이력 로드 (하위 호환 지원)
     - seen_articles: 이미 수집·AI 평가를 거친 모든 기사 키 (채택/탈락 포함 -> 1시간 뒤 중복 재평가 방지)
     - sent_articles: 실제로 텔레그램 발송된 기사 키
+    - recent_sent_topics: 최근 텔레그램으로 실제 발송한 뉴스 제목 목록 (타 언론사 재탕·유사 기사 차단용)
     - seen_sec_filings: 이미 확인·발송한 SEC EDGAR 공시 고유번호(accessionNumber)
     """
     raw = load_json_file(path, {})
@@ -87,6 +88,7 @@ def load_news_state(path: Path) -> Dict[str, List[str]]:
         return {
             "seen_articles": list(raw),
             "sent_articles": list(raw),
+            "recent_sent_topics": [],
             "seen_sec_filings": [],
         }
     if not isinstance(raw, dict):
@@ -94,6 +96,7 @@ def load_news_state(path: Path) -> Dict[str, List[str]]:
     return {
         "seen_articles": list(raw.get("seen_articles", [])),
         "sent_articles": list(raw.get("sent_articles", [])),
+        "recent_sent_topics": list(raw.get("recent_sent_topics", [])),
         "seen_sec_filings": list(raw.get("seen_sec_filings", [])),
     }
 
@@ -102,6 +105,7 @@ def save_news_state(path: Path, state: Dict[str, List[str]], max_history: int = 
     cleaned = {
         "seen_articles": list(dict.fromkeys(state.get("seen_articles", [])))[-max_history:],
         "sent_articles": list(dict.fromkeys(state.get("sent_articles", [])))[-max_history:],
+        "recent_sent_topics": list(dict.fromkeys(state.get("recent_sent_topics", [])))[-40:],
         "seen_sec_filings": list(dict.fromkeys(state.get("seen_sec_filings", [])))[-max_history:],
     }
     save_json_file(path, cleaned)
@@ -428,14 +432,43 @@ def fetch_us_google_news(query: str, lookback_days: int = 2, limit: int = 8) -> 
         return []
 
 
+_STOPWORDS = {
+    "the", "a", "an", "in", "on", "at", "to", "for", "of", "and", "or", "is", "are",
+    "was", "were", "be", "been", "with", "by", "as", "from", "that", "this", "it",
+    "its", "after", "amid", "over", "into", "why", "how", "what", "stock", "shares",
+    "inc", "corp", "ltd", "group", "holding", "technology", "technologies",
+}
+
+
+def _extract_title_tokens(title: str) -> Set[str]:
+    words = re.findall(r"[a-z0-9]+", title.lower())
+    return {w for w in words if len(w) >= 3 and w not in _STOPWORDS}
+
+
+def _is_similar_to_existing(title: str, existing_titles: List[str], threshold: float = 0.55) -> bool:
+    """단어 집합 유사도(Overlap Coefficient)로 타 언론사 재탕·복제 기사를 사전 차단"""
+    tokens_a = _extract_title_tokens(title)
+    if len(tokens_a) < 3:
+        return False
+    for prev in existing_titles:
+        tokens_b = _extract_title_tokens(prev)
+        if len(tokens_b) < 3:
+            continue
+        overlap = len(tokens_a & tokens_b) / float(min(len(tokens_a), len(tokens_b)))
+        if overlap >= threshold:
+            return True
+    return False
+
+
 def collect_layered_articles(
     profile: Dict[str, Any],
     seen_keys: Set[str],
+    recent_topics: List[str],
     lookback_days: int = 2,
     max_per_layer: int = 8,
 ) -> Tuple[Dict[str, List[Dict[str, str]]], List[str]]:
     """
-    3계층 쿼리를 순회하며 신규 미국 기사 수집 (이미 검토한 seen_keys 제외)
+    3계층 쿼리를 순회하며 신규 미국 기사 수집 (이미 검토한 seen_keys 및 유사 제목 제외)
     - 반환값: (계층별 신규 기사 dict, 이번 실행에서 수집된 모든 신규 기사 norm_key 리스트)
     """
     queries_cfg = profile.get("queries", {})
@@ -446,6 +479,7 @@ def collect_layered_articles(
     }
     batch_keys: List[str] = []
     batch_seen: Set[str] = set()
+    accepted_titles: List[str] = list(recent_topics)
 
     for layer_name in ["layer1_direct", "layer2_macro_capex", "layer3_ecosystem"]:
         q_list = queries_cfg.get(layer_name, [])
@@ -458,6 +492,12 @@ def collect_layered_articles(
                     continue
                 batch_seen.add(norm_title)
                 batch_keys.append(norm_title)
+
+                # 이미 발송된 주제나 이번 배치 내 다른 기사와 55% 이상 핵심 단어가 겹치면 재탕 기사로 판단해 스킵
+                if _is_similar_to_existing(art["title"], accepted_titles):
+                    continue
+
+                accepted_titles.append(art["title"])
                 art["norm_key"] = norm_title
                 layer_items.append(art)
                 if len(layer_items) >= max_per_layer:
@@ -473,6 +513,7 @@ def analyze_intelligence_for_ticker(
     profile: Dict[str, Any],
     sec_filings: List[Dict[str, str]],
     layered_articles: Dict[str, List[Dict[str, str]]],
+    recent_sent_topics: List[str],
 ) -> Optional[Dict[str, Any]]:
     """
     신규 SEC EDGAR 공시 및 1~3계층 영문 기사들을 바탕으로 종목 관점의 영향도와 연결고리 분석
@@ -524,6 +565,11 @@ def analyze_intelligence_for_ticker(
 
     sec_block = "\n".join(sec_lines)
     articles_block = "\n".join(article_lines)
+    recent_topics_block = (
+        "\n".join(f"  - {t}" for t in recent_sent_topics[-25:])
+        if recent_sent_topics
+        else "  (None)"
+    )
 
     prompt = f"""You are a Senior Wall Street Equity Research Analyst.
 Target Stock: {ticker} ({company_name})
@@ -539,9 +585,11 @@ CRITICAL RULES:
 1. SEC FILINGS: If any SEC filings (`[SEC #1]`, etc.) are listed, analyze EVERY ONE of them in `sec_alerts`.
    - For `Form 4` (Insider Transactions): Clearly state who (Name & Title) bought (`P`), sold (`S`), or exercised/withheld (`M`/`F`) how many shares and whether it is a meaningful open-market signal or routine tax/compensation activity.
    - For `8-K`, `10-Q`, `10-K`, `SC 13D/G`: Summarize the exact material event or financial update.
-2. NEWS SELECTION (Strict Quality Gate for Hourly Monitoring):
-   - Select up to 5 genuinely high-signal articles in `selected_news`.
-   - If all newly collected articles in this cycle are trivial clickbait, generic stock-mover recaps, or irrelevant noise, return an empty list `[]` for `selected_news` so we do NOT spam the user.
+2. STRICT DEDUPLICATION & QUALITY GATE (Hourly Monitoring):
+   - Check `[Recently Sent Topics]` below. Do NOT select any article that covers the same underlying event, analyst note, or topic already sent (even if published by a different media outlet with a different headline).
+   - Also do NOT select multiple articles in the same batch that cover the same story.
+   - Do NOT try to force-fill 5 articles! Select ONLY genuinely new, high-signal articles (1 to 5 items). If only 1 new story is meaningful, return just 1 item in `selected_news`.
+   - If all newly collected articles are repeats of `[Recently Sent Topics]`, trivial clickbait, or generic stock-mover recaps, return an empty list `[]` for `selected_news` so we do NOT spam the user.
 3. SECOND-ORDER REASONING:
    - Even if a Layer 2 or Layer 3 article does NOT mention "{ticker}" by name, explain the exact second-order causal chain connecting that news to "{ticker}"'s future revenue, orders, margins, or valuation multiples.
    - Do NOT blindly label "record customer spending" as bullish (`🟢 호재`) if the article warns that customer spending is outpacing operating cash flow, relying on debt financing, facing ROI skepticism, or hitting physical bottlenecks. Recognize those as **leading warning signals of future demand/budget slowdown** and classify them as `🟡 주의/체크` or `🔴 악재`.
@@ -569,6 +617,9 @@ Return ONLY valid JSON matching this schema:
     }}
   ]
 }}
+
+[Recently Sent Topics (DO NOT REPEAT THESE STORIES)]
+{recent_topics_block}
 
 [Newly Detected US SEC EDGAR Filings]
 {sec_block}
@@ -605,6 +656,7 @@ Return ONLY valid JSON matching this schema:
         item["publisher"] = orig.get("publisher", "US Media")
         item["link"] = orig.get("link", "")
         item["norm_key"] = orig.get("norm_key", "")
+        item["orig_title"] = orig.get("title", "")
         enriched_news.append(item)
     result["selected_news"] = enriched_news
 
@@ -769,6 +821,7 @@ def main():
         layered_articles, batch_article_keys = collect_layered_articles(
             profile,
             seen_keys=seen_articles_set,
+            recent_topics=state["recent_sent_topics"],
             lookback_days=lookback_days,
             max_per_layer=max_per_layer,
         )
@@ -780,7 +833,12 @@ def main():
             continue
 
         print(f"🤖 [{ticker}] Gemini SEC 공시 & 밸류체인 연결고리 분석 중...")
-        analysis = analyze_intelligence_for_ticker(profile, new_sec_filings, layered_articles)
+        analysis = analyze_intelligence_for_ticker(
+            profile,
+            new_sec_filings,
+            layered_articles,
+            recent_sent_topics=state["recent_sent_topics"],
+        )
         if not analysis:
             print(f"⚠️ [{ticker}] AI 분석 실패 (다음 주기에 재시도합니다).\n")
             continue
@@ -795,7 +853,7 @@ def main():
             state_changed = True
 
         if not has_sec and not has_news:
-            print(f"⏭️ [{ticker}] 신규 수집 기사가 모두 단순 클릭베이트/무의미한 소식으로 판별되어 알림을 생략합니다.\n")
+            print(f"⏭️ [{ticker}] 신규 수집 기사가 모두 이전 발송 주제와 중복되거나 무의미한 소식으로 판별되어 알림을 생략합니다.\n")
             continue
 
         message = build_briefing_message(profile, analysis)
@@ -810,6 +868,10 @@ def main():
             for item in analysis.get("selected_news", []):
                 if item.get("norm_key"):
                     state["sent_articles"].append(item["norm_key"])
+                orig_t = item.get("orig_title", "")
+                kr_t = item.get("korean_headline", "")
+                if orig_t:
+                    state["recent_sent_topics"].append(f"{orig_t} ({kr_t})" if kr_t else orig_t)
             for s_item in analysis.get("sec_alerts", []):
                 if s_item.get("accession_number"):
                     state["seen_sec_filings"].append(s_item["accession_number"])
