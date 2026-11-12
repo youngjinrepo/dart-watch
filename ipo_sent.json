@@ -1,0 +1,21 @@
+{
+  "sent_rcept_nos": [
+    "20261110000253"
+  ],
+  "scheduled_reminders": {
+    "01705740": {
+      "corp_name": "엠비디",
+      "rcept_no": "20261110000253",
+      "subscription_start_date": "2026-11-12",
+      "subscription_date": "2026.11.12 ~ 2026.11.13",
+      "lead_manager": "하나증권",
+      "confirmed_price": 7000,
+      "competition_rate": 187.1,
+      "lockup_ratio_pct": 0.0,
+      "score": 25,
+      "verdict_label": "청약 회피 (E등급)",
+      "final_comment": "미래 추정 실적에 기반한 밸류에이션과 지속적인 영업현금흐름 악화, 그리고 낮은 수요예측 결과 및 의무보유확약 부재로 투자 위험이 높은 종목입니다.",
+      "reminded": false
+    }
+  }
+}
