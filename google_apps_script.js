@@ -79,10 +79,12 @@ function schedulerTick() {
   }
 
   // -------------------------------------------------------------------------
-  // 3) 미국 주식 밸류체인 레이더 (us_news.yml): 화~토 오전 08:00 (하루 1회)
+  // 3) 미국 주식 밸류체인 & SEC 레이더 (us_news.yml): 1시간 간격 (월~토 매시 정각)
+  //    (새로 올라온 SEC 공시나 미국 기사가 없으면 AI 호출 없이 1초 만에 조용히 종료됨)
   // -------------------------------------------------------------------------
-  if (isTueToSat && kstHour === 8 && kstMin < 30) {
-    triggerOncePerSlot("us_news.yml", `us_news_${kstDateStr}_08:00`);
+  const isMonToSat = kstDayOfWeek >= 1 && kstDayOfWeek <= 6;
+  if (isMonToSat && halfHourSlot === "00") {
+    triggerOncePerSlot("us_news.yml", `us_news_${kstDateStr}_${kstHour}:00`);
   }
 }
 

@@ -23,5 +23,7 @@ __pycache__/
 # AI
 .claude/
 
-# State file (will be versioned)
-# sent.json
+# Bot runtime state files (stored in dedicated 'bot-state' branch on GitHub to prevent git conflicts on main)
+sent.json
+ipo_sent.json
+news_sent.json

@@ -2,13 +2,6 @@ name: 공모주(IPO) 수요예측 분석 알림
 
 on:
   # Google Apps Script (google_apps_script.js)에서 정시마다 workflow_dispatch로 즉시 깨움 (지연 0초)
-  # GitHub 자체 schedule은 수 시간 지연 실행되므로 비활성화 처리
-  # schedule:
-  #   - cron: '30 23 * * 0-4'  # KST 월~금 08:30
-  #   - cron: '0 7 * * 1-5'    # KST 월~금 16:00
-  #   - cron: '0 11 * * 1-5'   # KST 월~금 20:00
-
-  # 외부 API(Google Apps Script) 및 수동 트리거
   workflow_dispatch:
 
 jobs:
@@ -22,6 +15,16 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Load bot state from bot-state branch
+        run: |
+          if git ls-remote --exit-code --heads origin bot-state >/dev/null 2>&1; then
+            git fetch origin bot-state
+            git checkout origin/bot-state -- ipo_sent.json 2>/dev/null || true
+            git reset HEAD ipo_sent.json 2>/dev/null || true
+          elif [ ! -f ipo_sent.json ]; then
+            git show HEAD~1:ipo_sent.json > ipo_sent.json 2>/dev/null || true
+          fi
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -42,16 +45,32 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python ipo_main.py
 
-      - name: Commit and push changes
+      - name: Save bot state to bot-state branch (Keep main clean)
         run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
+          git config --global user.email "action@github.com"
+          git config --global user.name "GitHub Action"
 
-          if [ -n "$(git status --porcelain ipo_sent.json)" ]; then
-            git add ipo_sent.json
+          mkdir -p /tmp/state-files
+          for f in sent.json ipo_sent.json news_sent.json us_stock_profiles.json; do
+            [ -f "$f" ] && cp "$f" /tmp/state-files/
+          done
+
+          git worktree add --detach /tmp/bot-state
+          cd /tmp/bot-state
+          if git ls-remote --exit-code --heads origin bot-state >/dev/null 2>&1; then
+            git fetch origin bot-state
+            git checkout -B bot-state origin/bot-state
+          else
+            git checkout --orphan bot-state
+            git rm -rf . >/dev/null 2>&1 || true
+          fi
+
+          cp /tmp/state-files/* . 2>/dev/null || true
+          git add -f sent.json ipo_sent.json news_sent.json us_stock_profiles.json 2>/dev/null || true
+          if ! git diff --cached --quiet; then
             git commit -m "🏛️ 공모주 발송 이력 업데이트 ($(date +'%Y-%m-%d %H:%M:%S'))"
-            git pull --rebase origin main || true
-            git push
+            git pull --rebase origin bot-state 2>/dev/null || true
+            git push origin bot-state
           else
             echo "변경사항 없음"
           fi
