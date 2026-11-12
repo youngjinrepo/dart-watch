@@ -1,14 +1,14 @@
 name: DART 공시 알림 시스템
 
 on:
-  schedule:
-    # GitHub Actions cron은 UTC 기준 (KST = UTC + 9시간)
-    # DART 공시 접수/공개 시간(평일 KST 08:00~19:00)에 30분 간격으로 실행
-    - cron: '*/30 23 * * 0-4'   # KST 월~금 08:00, 08:30 (30분 간격)
-    - cron: '*/30 0-9 * * 1-5'  # KST 월~금 09:00 ~ 18:30 (30분 간격)
-    - cron: '0 10 * * 1-5'      # KST 월~금 19:00 마감 확인
+  # Google Apps Script (google_apps_script.js)에서 정시마다 workflow_dispatch로 즉시 깨움 (지연 0초)
+  # GitHub 자체 schedule은 수 시간 지연 실행되므로 비활성화 처리
+  # schedule:
+  #   - cron: '*/30 23 * * 0-4'
+  #   - cron: '*/30 0-9 * * 1-5'
+  #   - cron: '0 10 * * 1-5'
   
-  # 수동 트리거 허용
+  # 외부 API(Google Apps Script) 및 수동 트리거
   workflow_dispatch:
 
 jobs:
