@@ -4,6 +4,10 @@ on:
   # Google Apps Script (google_apps_script.js)에서 정시마다 workflow_dispatch로 즉시 깨움 (지연 0초)
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
 jobs:
   dart-notification:
     runs-on: ubuntu-latest
@@ -52,32 +56,53 @@ jobs:
           git config --global user.name "GitHub Action"
 
           mkdir -p /tmp/state-files
-          for f in sent.json ipo_sent.json news_sent.json us_stock_profiles.json; do
+          STATE_FILES="sent.json"
+          HAS_FILES=0
+          for f in $STATE_FILES; do
             if [ -f "$f" ]; then
               cp "$f" /tmp/state-files/
+              HAS_FILES=1
             fi
           done
+          if [ "$HAS_FILES" -eq 0 ]; then
+            echo "저장할 상태 파일 없음"
+            exit 0
+          fi
 
           git worktree add --detach /tmp/bot-state
           cd /tmp/bot-state
-          if git ls-remote --exit-code --heads origin bot-state >/dev/null 2>&1; then
-            git fetch origin bot-state:refs/remotes/origin/bot-state
-            git checkout -B bot-state refs/remotes/origin/bot-state
-          else
-            git checkout --orphan bot-state
-            git rm -rf . >/dev/null 2>&1 || true
-          fi
 
-          cp /tmp/state-files/* . 2>/dev/null || true
-          for f in sent.json ipo_sent.json news_sent.json us_stock_profiles.json; do
-            if [ -f "$f" ]; then
-              git add -f "$f"
+          for attempt in 1 2 3 4; do
+            if git ls-remote --exit-code --heads origin bot-state >/dev/null 2>&1; then
+              git fetch origin bot-state:refs/remotes/origin/bot-state
+              git checkout -B bot-state refs/remotes/origin/bot-state
+            else
+              git checkout --orphan bot-state
+              git rm -rf . >/dev/null 2>&1 || true
             fi
-          done
 
-          if ! git diff --cached --quiet; then
+            cp /tmp/state-files/* . 2>/dev/null || true
+            for f in $STATE_FILES; do
+              if [ -f "$f" ]; then
+                git add -f "$f"
+              fi
+            done
+
+            if git diff --cached --quiet; then
+              echo "변경사항 없음"
+              break
+            fi
+
             git commit -m "📊 DART 발송 이력 업데이트 ($(date +'%Y-%m-%d %H:%M:%S'))"
-            git push origin HEAD:refs/heads/bot-state
-          else
-            echo "변경사항 없음"
-          fi
+            if git push origin HEAD:refs/heads/bot-state; then
+              echo "✅ bot-state 푸시 완료"
+              break
+            fi
+
+            if [ "$attempt" -eq 4 ]; then
+              echo "❌ bot-state 푸시 재시도 초과"
+              exit 1
+            fi
+            echo "⚠️ 동시 푸시 충돌 감지, 최신 bot-state 반영 후 재시도 ($attempt/4)..."
+            sleep 3
+          done

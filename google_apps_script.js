@@ -44,7 +44,6 @@ function schedulerTick() {
   const kstDayOfWeek = parseInt(Utilities.formatDate(now, "Asia/Seoul", "u"), 10);
 
   const isWeekday = kstDayOfWeek >= 1 && kstDayOfWeek <= 5; // 월~금
-  const isTueToSat = kstDayOfWeek >= 2 && kstDayOfWeek <= 6; // 화~토 (미국장 월~금 마감 직후)
 
   // 현재 30분 단위 슬롯 계산 (00~29분 -> "00", 30~59분 -> "30")
   const halfHourSlot = kstMin < 30 ? "00" : "30";

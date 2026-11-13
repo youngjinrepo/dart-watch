@@ -12,10 +12,6 @@
     "00860332"
   ],
   "corp_codes_comment": "감시 대상 기업의 고유 코드 (메리츠금융지주 00860332)",
-  "corp_names": {
-    "00860332": "메리츠금융지주"
-  },
-  "corp_names_comment": "뉴스 검색용 corp_code → 회사명 매핑 (비어있으면 DART API로 자동 조회)",
   "keywords": [],
   "keywords_comment": "공시 제목에 포함된 키워드만 알림 (모두 대소문자 구분 없음, 빈 배열 시 모두 발송)",
   "summary": {
@@ -32,6 +28,8 @@
     "us_tickers_comment": "감시할 미국 주식 티커 목록 (티커만 바꾸면 AI가 전방산업·CapEx·경쟁사 검색어를 자동 생성)",
     "lookback_days": 2,
     "lookback_days_comment": "최근 N일 이내의 미국 현지 뉴스 검색",
+    "sec_lookback_days": 7,
+    "sec_lookback_days_comment": "최근 N일 이내의 SEC EDGAR 공시 조회",
     "max_articles_per_layer": 8,
     "profile_cache_file": "us_stock_profiles.json",
     "sent_file": "news_sent.json",
@@ -40,24 +38,12 @@
   },
   "ipo": {
     "enabled": true,
-    "enabled_comment": "공모주(IPO) 수요예측 분석 및 적합/부적합 판정 알림 사용 여부",
+    "enabled_comment": "공모주(IPO) 수요예측 100점 스코어링 분석 및 청약 리마인더 알림 사용 여부",
     "sent_file": "ipo_sent.json",
     "max_history": 100,
     "only_confirmed": true,
     "only_confirmed_comment": "true: 수요예측 발표([발행조건확정]) 공시만 분석, false: 신규 증권신고서(지분증권)도 포함",
     "exclude_spac": true,
-    "exclude_spac_comment": "스팩(기업인수목적) 제외 여부",
-    "criteria": {
-      "require_band_top_or_above": true,
-      "require_band_top_or_above_comment": "조건1: 확정공모가가 희망밴드 상단 이상이어야 적합",
-      "min_competition_rate": 500.0,
-      "min_competition_rate_comment": "조건2: 최소 기관 수요예측 경쟁률 (예: 500.0 = 500:1 이상)",
-      "min_upper_band_ratio": 80.0,
-      "min_upper_band_ratio_comment": "조건3: 희망밴드 상단 이상 가격 신청 비율 최소 기준 (%, 수량 기준)",
-      "min_lockup_ratio": 5.0,
-      "min_lockup_ratio_comment": "조건4: 최소 의무보유확약 비율 (%, 총 신청수량 대비 확약수량 비율)",
-      "max_tradable_ratio": 40.0,
-      "max_tradable_ratio_comment": "조건5: 상장일 유통가능 물량 최대 비율 (%, 원문에 기재된 경우만 판정)"
-    }
+    "exclude_spac_comment": "스팩(기업인수목적) 제외 여부"
   }
 }

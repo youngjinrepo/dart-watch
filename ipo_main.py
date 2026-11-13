@@ -79,6 +79,29 @@ def load_ipo_state(state_file: Path) -> Dict[str, Any]:
 def save_ipo_state(state_file: Path, state: Dict[str, Any], max_history: int = 100) -> None:
     unique_rcepts = list(dict.fromkeys(state.get("sent_rcept_nos", [])))
     state["sent_rcept_nos"] = unique_rcepts[-max_history:]
+
+    today_kst = datetime.now(KST).date()
+    cutoff_date = today_kst - timedelta(days=14)
+    cleaned_reminders: Dict[str, Any] = {}
+    for key_id, info in (state.get("scheduled_reminders") or {}).items():
+        if not isinstance(info, dict):
+            continue
+        sub_str = str(info.get("subscription_start_date") or "").strip()
+        try:
+            sub_date = datetime.strptime(sub_str, "%Y-%m-%d").date()
+        except ValueError:
+            if info.get("reminded"):
+                continue
+            cleaned_reminders[key_id] = info
+            continue
+
+        if sub_date < cutoff_date:
+            continue
+        if info.get("reminded") and sub_date < today_kst:
+            continue
+        cleaned_reminders[key_id] = info
+
+    state["scheduled_reminders"] = cleaned_reminders
     with open(state_file, "w", encoding="utf-8") as f:
         json.dump(state, f, ensure_ascii=False, indent=2)
 
@@ -830,12 +853,50 @@ def build_day1_reminder_message(info: Dict[str, Any]) -> str:
     )
 
 
+def _truncate_telegram_html(message: str, limit: int = 4096) -> str:
+    """Telegram 4,096자 제한 초과 시 하단 링크를 보존하며 HTML 태그 손상 없이 안전하게 절삭"""
+    if len(message) <= limit:
+        return message
+    footer = ""
+    body = message
+    marker = "\n\n🔗 "
+    if marker in message:
+        body, tail = message.rsplit(marker, 1)
+        footer = marker + tail
+    suffix = "\n...(생략)" + footer
+    max_body = max(200, limit - len(suffix))
+    if len(body) > max_body:
+        lines = body.splitlines()
+        kept: List[str] = []
+        total = 0
+        for line in lines:
+            add_len = len(line) + (1 if kept else 0)
+            if total + add_len > max_body:
+                break
+            kept.append(line)
+            total += add_len
+        if kept:
+            body = "\n".join(kept)
+        else:
+            body = re.sub(r"<[^>]*$", "", body[:max_body])
+    result = body + suffix
+    if len(result) > limit:
+        result = re.sub(r"<[^>]*$", "", message[: limit - 10]) + "\n...(생략)"
+    return result
+
+
 def send_telegram_message(message: str) -> bool:
     try:
         url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+        safe_message = _truncate_telegram_html(message)
         resp = requests.post(
             url,
-            json={"chat_id": CHAT_ID, "text": message, "parse_mode": "HTML"},
+            json={
+                "chat_id": CHAT_ID,
+                "text": safe_message,
+                "parse_mode": "HTML",
+                "disable_web_page_preview": True,
+            },
             timeout=10,
         )
         resp.raise_for_status()

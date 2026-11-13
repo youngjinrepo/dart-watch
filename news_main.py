@@ -663,7 +663,12 @@ Return ONLY valid JSON matching this schema:
     return result
 
 
-def build_briefing_message(profile: Dict[str, Any], analysis: Dict[str, Any]) -> str:
+def _render_briefing_message(
+    profile: Dict[str, Any],
+    analysis: Dict[str, Any],
+    sec_alerts: List[Dict[str, Any]],
+    selected_news: List[Dict[str, Any]],
+) -> str:
     ticker = html.escape(profile.get("ticker", ""))
     company_name = html.escape(profile.get("company_name", ""))
     sentiment = html.escape(str(analysis.get("overall_sentiment") or ""))
@@ -677,10 +682,9 @@ def build_briefing_message(profile: Dict[str, Any], analysis: Dict[str, Any]) ->
         f"💡 <b>종합 요약</b>\n{exec_summary}",
     ]
 
-    sec_alerts = analysis.get("sec_alerts", [])
     if sec_alerts:
         lines.extend(["", "🏛️ <b>미국 SEC EDGAR 공식 공시 알림</b>"])
-        for j, sec in enumerate(sec_alerts[:5], 1):
+        for sec in sec_alerts:
             form = html.escape(str(sec.get("form") or ""))
             f_date = html.escape(str(sec.get("filing_date") or ""))
             sig = html.escape(str(sec.get("impact_signal") or ""))
@@ -697,10 +701,9 @@ def build_briefing_message(profile: Dict[str, Any], analysis: Dict[str, Any]) ->
                 lines.append(f"<b>[Form {form} | {sig}]</b> {k_title} <i>({f_date})</i>")
                 lines.append(f"└ <b>공시 내용</b>: {s_desc}")
 
-    selected_news = analysis.get("selected_news", [])
     if selected_news:
         lines.extend(["", "📰 <b>핵심 미국 뉴스 & 연결고리 분석</b>"])
-        for i, item in enumerate(selected_news[:5], 1):
+        for i, item in enumerate(selected_news, 1):
             badge = html.escape(str(item.get("layer_badge") or ""))
             signal = html.escape(str(item.get("impact_signal") or ""))
             headline = html.escape(str(item.get("korean_headline") or ""))
@@ -721,7 +724,7 @@ def build_briefing_message(profile: Dict[str, Any], analysis: Dict[str, Any]) ->
     sec_search_url = (
         f"https://www.sec.gov/edgar/browse/?CIK={cik}"
         if cik
-        else f"https://www.sec.gov/edgar/searchedgar/companysearch"
+        else "https://www.sec.gov/edgar/searchedgar/companysearch"
     )
     lines.extend([
         "",
@@ -733,14 +736,61 @@ def build_briefing_message(profile: Dict[str, Any], analysis: Dict[str, Any]) ->
     return "\n".join(lines)
 
 
+def build_briefing_message(profile: Dict[str, Any], analysis: Dict[str, Any], max_len: int = 4096) -> str:
+    sec_list = list(analysis.get("sec_alerts", [])[:5])
+    news_list = list(analysis.get("selected_news", [])[:5])
+
+    msg = _render_briefing_message(profile, analysis, sec_list, news_list)
+    while len(msg) > max_len and news_list:
+        news_list.pop()
+        msg = _render_briefing_message(profile, analysis, sec_list, news_list)
+    while len(msg) > max_len and len(sec_list) > 1:
+        sec_list.pop()
+        msg = _render_briefing_message(profile, analysis, sec_list, news_list)
+    return msg
+
+
+def _truncate_telegram_html(message: str, limit: int = 4096) -> str:
+    """Telegram 4,096자 제한 초과 시 하단 링크를 보존하며 HTML 태그 손상 없이 안전하게 절삭"""
+    if len(message) <= limit:
+        return message
+    footer = ""
+    body = message
+    marker = "\n\n📊 "
+    if marker in message:
+        body, tail = message.rsplit(marker, 1)
+        footer = marker + tail
+    suffix = "\n...(생략)" + footer
+    max_body = max(200, limit - len(suffix))
+    if len(body) > max_body:
+        lines = body.splitlines()
+        kept: List[str] = []
+        total = 0
+        for line in lines:
+            add_len = len(line) + (1 if kept else 0)
+            if total + add_len > max_body:
+                break
+            kept.append(line)
+            total += add_len
+        if kept:
+            body = "\n".join(kept)
+        else:
+            body = re.sub(r"<[^>]*$", "", body[:max_body])
+    result = body + suffix
+    if len(result) > limit:
+        result = re.sub(r"<[^>]*$", "", message[: limit - 10]) + "\n...(생략)"
+    return result
+
+
 def send_telegram_message(message: str) -> bool:
     try:
         url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+        safe_message = _truncate_telegram_html(message)
         resp = requests.post(
             url,
             json={
                 "chat_id": CHAT_ID,
-                "text": message,
+                "text": safe_message,
                 "parse_mode": "HTML",
                 "disable_web_page_preview": True,
             },

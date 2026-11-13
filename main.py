@@ -11,12 +11,13 @@ import re
 import sys
 import html
 import json
+import time
 import zipfile
 import argparse
 import warnings
 import requests
 from datetime import datetime, timedelta, timezone
-from typing import List, Dict, Optional
+from typing import Any, Dict, List, Optional
 from pathlib import Path
 from dotenv import load_dotenv
 from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning
@@ -170,12 +171,15 @@ def fetch_dart_announcements(days: Optional[int] = None) -> List[Dict]:
         if days is not None and days > 0:
             start_date = today - timedelta(days=days)
             end_date = today
-        elif today.weekday() >= 5:  # 5=토요일, 6=일요일
+        elif today.weekday() == 0:  # 월요일: 금요일(19:00 이후 포함)부터 당일까지
+            start_date = today - timedelta(days=3)
+            end_date = today
+        elif today.weekday() >= 5:  # 5=토요일, 6=일요일: 금요일부터 당일까지
             days_to_friday = today.weekday() - 4  # 토요일:1, 일요일:2
             start_date = today - timedelta(days=days_to_friday)
             end_date = today
-        else:
-            start_date = today
+        else:  # 화~금: 전일 19:00 이후 야간 공시 누락 방지를 위해 전일부터 조회
+            start_date = today - timedelta(days=1)
             end_date = today
         
         bgn_de = start_date.strftime('%Y%m%d')
@@ -271,7 +275,13 @@ def fetch_announcement_text(rcept_no: str) -> Optional[str]:
             resp.raise_for_status()
             if resp.content[:2] == b'PK':  # ZIP 시그니처 확인
                 with zipfile.ZipFile(io.BytesIO(resp.content)) as z:
-                    for name in z.namelist():
+                    doc_names = [n for n in z.namelist() if n.lower().endswith(('.xml', '.html', '.htm'))]
+                    ordered_names = sorted(
+                        doc_names if doc_names else z.namelist(),
+                        key=lambda n: z.getinfo(n).file_size,
+                        reverse=True,
+                    )
+                    for name in ordered_names:
                         raw_bytes = z.read(name)
                         text = _extract_clean_text(raw_bytes)
                         if text:
@@ -389,37 +399,46 @@ def summarize_with_gemini(text: str, corp_name: str, title: str) -> Optional[str
     )
     models = ["gemini-3-flash-preview", "gemini-2.5-flash", "gemini-3.1-flash-lite"]
     for model_name in models:
-        try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
-            gen_cfg: Dict[str, Any] = {
-                "maxOutputTokens": 1024,
-                "temperature": 0.2,
-            }
-            if "flash-lite" not in model_name:
-                gen_cfg["thinkingConfig"] = {"thinkingBudget": 0}
-            payload = {
-                "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": gen_cfg,
-            }
-            response = requests.post(
-                url,
-                headers={"x-goog-api-key": api_key},
-                json=payload,
-                timeout=15,
-            )
-            if response.status_code == 429:
-                continue
-            response.raise_for_status()
-            data = response.json()
-            candidates = data.get("candidates", [])
-            if candidates:
-                parts = candidates[0].get("content", {}).get("parts", [])
-                texts = [p.get("text", "") for p in parts if not p.get("thought") and "text" in p]
-                result = "\n".join(texts).strip()
-                if result:
-                    return result
-        except Exception as e:
-            print(f"⚠️ Gemini 요약 실패 ({model_name}): {e}")
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
+        gen_cfg: Dict[str, Any] = {
+            "maxOutputTokens": 1024,
+            "temperature": 0.2,
+        }
+        if "flash-lite" not in model_name:
+            gen_cfg["thinkingConfig"] = {"thinkingBudget": 0}
+        payload = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": gen_cfg,
+        }
+
+        for attempt in range(1, 3):
+            try:
+                response = requests.post(
+                    url,
+                    headers={"x-goog-api-key": api_key},
+                    json=payload,
+                    timeout=25,
+                )
+                if response.status_code == 429:
+                    break
+                if response.status_code == 503 and attempt < 2:
+                    time.sleep(2)
+                    continue
+                response.raise_for_status()
+                data = response.json()
+                candidates = data.get("candidates", [])
+                if candidates:
+                    parts = candidates[0].get("content", {}).get("parts", [])
+                    texts = [p.get("text", "") for p in parts if not p.get("thought") and "text" in p]
+                    result = "\n".join(texts).strip()
+                    if result:
+                        return result
+                break
+            except Exception as e:
+                if attempt < 2:
+                    time.sleep(2)
+                    continue
+                print(f"⚠️ Gemini 요약 실패 ({model_name}): {e}")
     return None
 
 
@@ -484,6 +503,39 @@ def build_message(announcement: Dict, summary: Optional[str] = None) -> str:
     return message
 
 
+def _truncate_telegram_html(message: str, limit: int = 4096) -> str:
+    """Telegram 4,096자 제한 초과 시 하단 링크를 보존하며 HTML 태그 손상 없이 안전하게 절삭"""
+    if len(message) <= limit:
+        return message
+    footer = ""
+    body = message
+    marker = "\n\n🔗 "
+    if marker in message:
+        body, tail = message.rsplit(marker, 1)
+        footer = marker + tail
+    suffix = "\n...(생략)" + footer
+    max_body = max(200, limit - len(suffix))
+    if len(body) > max_body:
+        # 줄 단위로 먼저 자르고, 한 줄이 너무 길면 태그 경계를 피해 절삭
+        lines = body.splitlines()
+        kept: List[str] = []
+        total = 0
+        for line in lines:
+            add_len = len(line) + (1 if kept else 0)
+            if total + add_len > max_body:
+                break
+            kept.append(line)
+            total += add_len
+        if kept:
+            body = "\n".join(kept)
+        else:
+            body = re.sub(r"<[^>]*$", "", body[:max_body])
+    result = body + suffix
+    if len(result) > limit:
+        result = re.sub(r"<[^>]*$", "", message[: limit - 10]) + "\n...(생략)"
+    return result
+
+
 def send_telegram_message(message: str) -> bool:
     """
     Telegram으로 메시지 발송
@@ -496,10 +548,11 @@ def send_telegram_message(message: str) -> bool:
     """
     try:
         url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+        safe_message = _truncate_telegram_html(message)
         
         payload = {
             'chat_id': CHAT_ID,
-            'text': message,
+            'text': safe_message,
             'parse_mode': 'HTML',  # HTML 형식 지원
         }
         
