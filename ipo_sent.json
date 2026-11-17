@@ -30,7 +30,7 @@
       "score": 42,
       "verdict_label": "청약 비추천 (D등급)",
       "final_comment": "차세대 통신 기술력은 기대되나, 미래 추정 실적 의존도가 높고 수요예측 결과가 매우 부진하여 상장 초기 주가 변동성 위험이 큼.",
-      "reminded": false
+      "reminded": true
     }
   }
 }
