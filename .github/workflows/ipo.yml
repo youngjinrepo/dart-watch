@@ -3,6 +3,17 @@ name: 공모주(IPO) 수요예측 분석 알림
 on:
   # Google Apps Script (google_apps_script.js)에서 정시마다 workflow_dispatch로 즉시 깨움 (지연 0초)
   workflow_dispatch:
+    inputs:
+      days:
+        description: "조회할 최근 일수 (기본값: 3)"
+        required: false
+        default: "3"
+        type: string
+      weekly_calendar:
+        description: "주간 공모주 청약 & 계좌 준비 캘린더 즉시 발송"
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: ${{ github.workflow }}
@@ -47,7 +58,12 @@ jobs:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: python ipo_main.py
+        run: |
+          ARGS="--days ${{ inputs.days || '3' }}"
+          if [ "${{ inputs.weekly_calendar }}" = "true" ]; then
+            ARGS="$ARGS --weekly-calendar"
+          fi
+          python ipo_main.py $ARGS
 
       - name: Save bot state to bot-state branch (Keep main clean)
         run: |

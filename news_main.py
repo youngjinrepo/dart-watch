@@ -111,6 +111,38 @@ def save_news_state(path: Path, state: Dict[str, List[str]], max_history: int = 
     save_json_file(path, cleaned)
 
 
+def _normalize_gemini_json_object(parsed: Any) -> Dict[str, Any]:
+    """Gemini가 JSON 객체 대신 리스트로 응답한 경우에도 안전하게 dict로 정규화"""
+    if isinstance(parsed, list):
+        if not parsed:
+            return {
+                "overall_sentiment": "🟡 혼조/관망",
+                "executive_summary": "",
+                "sec_alerts": [],
+                "selected_news": [],
+            }
+        dict_items = [x for x in parsed if isinstance(x, dict)]
+        if any("article_id" in x for x in dict_items):
+            return {
+                "overall_sentiment": "🟡 혼조/관망",
+                "executive_summary": "",
+                "sec_alerts": [],
+                "selected_news": dict_items,
+            }
+        if any("sec_id" in x for x in dict_items):
+            return {
+                "overall_sentiment": "🟡 혼조/관망",
+                "executive_summary": "",
+                "sec_alerts": dict_items,
+                "selected_news": [],
+            }
+        if len(parsed) == 1 and isinstance(parsed[0], dict):
+            parsed = parsed[0]
+    if not isinstance(parsed, dict):
+        raise ValueError("Expected JSON object")
+    return parsed
+
+
 def call_gemini_json(
     prompt: str,
     max_tokens: int = 2048,
@@ -158,7 +190,8 @@ def call_gemini_json(
                     break
                 parts = candidates[0].get("content", {}).get("parts", [])
                 raw_text = "\n".join(p.get("text", "") for p in parts if not p.get("thought") and "text" in p).strip()
-                return json.loads(raw_text)
+                parsed = json.loads(raw_text)
+                return _normalize_gemini_json_object(parsed)
             except Exception as e:
                 if attempt < 2:
                     time.sleep(2)
@@ -509,11 +542,98 @@ def collect_layered_articles(
     return collected, batch_keys
 
 
+def fetch_yahoo_quote(symbol: str) -> Optional[Dict[str, Any]]:
+    """Yahoo Finance Chart API로 정규장/시간외(Pre/After) 시세 및 전일 대비 등락률 조회"""
+    encoded_sym = urllib.parse.quote(symbol, safe="")
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{encoded_sym}?interval=5m&range=1d&includePrePost=true"
+    try:
+        resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=8)
+        resp.raise_for_status()
+        results = resp.json().get("chart", {}).get("result", [])
+        if not results:
+            return None
+
+        res = results[0]
+        meta = res.get("meta", {})
+        reg_price = meta.get("regularMarketPrice")
+        if not isinstance(reg_price, (int, float)):
+            return None
+
+        prev_close = meta.get("chartPreviousClose") or meta.get("previousClose")
+        reg_chg_pct: Optional[float] = None
+        if isinstance(prev_close, (int, float)) and prev_close > 0:
+            reg_chg_pct = ((reg_price - prev_close) / prev_close) * 100.0
+
+        ext_label: Optional[str] = None
+        ext_price: Optional[float] = None
+        ext_chg_pct: Optional[float] = None
+
+        timestamps = res.get("timestamp") or []
+        quote_list = (res.get("indicators", {}).get("quote") or [{}])
+        closes = quote_list[0].get("close") or []
+        valid_points = [(t, c) for t, c in zip(timestamps, closes) if isinstance(c, (int, float))]
+
+        periods = meta.get("currentTradingPeriod") or {}
+        reg_period = periods.get("regular") or {}
+        pre_period = periods.get("pre") or {}
+        reg_start = reg_period.get("start", 0)
+        reg_end = reg_period.get("end", 0)
+        pre_start = pre_period.get("start", 0)
+
+        if valid_points and reg_end:
+            last_t, last_c = valid_points[-1]
+            if last_t > reg_end:
+                ext_label = "애프터"
+                ext_price = float(last_c)
+            elif reg_start and pre_start <= last_t < reg_start:
+                ext_label = "프리"
+                ext_price = float(last_c)
+
+            if ext_price is not None and reg_price > 0:
+                ext_chg_pct = ((ext_price - reg_price) / reg_price) * 100.0
+                if abs(ext_price - reg_price) < 0.005:
+                    ext_label = None
+                    ext_price = None
+                    ext_chg_pct = None
+
+        return {
+            "symbol": symbol,
+            "reg_price": float(reg_price),
+            "reg_chg_pct": reg_chg_pct,
+            "ext_label": ext_label,
+            "ext_price": ext_price,
+            "ext_chg_pct": ext_chg_pct,
+        }
+    except Exception as e:
+        print(f"⚠️ [{symbol}] 시세 조회 실패: {e}")
+        return None
+
+
+def fetch_us_market_snapshot(ticker: str) -> Dict[str, Any]:
+    """대상 티커 및 나스닥(^IXIC)·S&P500(^GSPC) 시세 스냅샷 조회"""
+    return {
+        "ticker": fetch_yahoo_quote(ticker),
+        "nasdaq": fetch_yahoo_quote("^IXIC"),
+        "sp500": fetch_yahoo_quote("^GSPC"),
+    }
+
+
+def _format_quote_change(quote: Dict[str, Any], currency: str = "$") -> str:
+    reg_p = quote["reg_price"]
+    reg_chg = quote.get("reg_chg_pct")
+    price_str = f"{currency}{reg_p:,.2f}"
+    if isinstance(reg_chg, (int, float)):
+        sign = "+" if reg_chg > 0 else ""
+        return f"{price_str} ({sign}{reg_chg:.2f}%)"
+    return price_str
+
+
 def analyze_intelligence_for_ticker(
     profile: Dict[str, Any],
     sec_filings: List[Dict[str, str]],
     layered_articles: Dict[str, List[Dict[str, str]]],
     recent_sent_topics: List[str],
+    market_snapshot: Optional[Dict[str, Any]] = None,
 ) -> Optional[Dict[str, Any]]:
     """
     신규 SEC EDGAR 공시 및 1~3계층 영문 기사들을 바탕으로 종목 관점의 영향도와 연결고리 분석
@@ -571,13 +691,35 @@ def analyze_intelligence_for_ticker(
         else "  (None)"
     )
 
+    market_ctx_lines: List[str] = []
+    if market_snapshot:
+        tq = market_snapshot.get("ticker")
+        nq = market_snapshot.get("nasdaq")
+        sq = market_snapshot.get("sp500")
+        if tq:
+            t_str = _format_quote_change(tq, "$")
+            if tq.get("ext_label") and isinstance(tq.get("ext_price"), (int, float)):
+                e_chg = tq.get("ext_chg_pct")
+                e_sign = "+" if isinstance(e_chg, (int, float)) and e_chg > 0 else ""
+                e_pct = f" ({e_sign}{e_chg:.2f}%)" if isinstance(e_chg, (int, float)) else ""
+                t_str += f" | {tq['ext_label']}: ${tq['ext_price']:,.2f}{e_pct}"
+            market_ctx_lines.append(f"- Latest Stock Quote ({ticker}): {t_str}")
+        idx_parts: List[str] = []
+        if nq:
+            idx_parts.append(f"NASDAQ {_format_quote_change(nq, '')}")
+        if sq:
+            idx_parts.append(f"S&P 500 {_format_quote_change(sq, '')}")
+        if idx_parts:
+            market_ctx_lines.append(f"- US Market Indices: {' | '.join(idx_parts)}")
+    market_ctx_block = ("\n" + "\n".join(market_ctx_lines)) if market_ctx_lines else ""
+
     prompt = f"""You are a Senior Wall Street Equity Research Analyst.
 Target Stock: {ticker} ({company_name})
 - Business Summary: {kr_summary}
 - Core Products & Niche Terms: {products}
 - Key Customers / Buyers: {customers}
 - Key Competitors / Peers: {competitors}
-- Key Structural Risks & Bottlenecks to Watch: {risks}
+- Key Structural Risks & Bottlenecks to Watch: {risks}{market_ctx_block}
 
 Below are the newly detected US SEC EDGAR filings and US English news articles from the latest monitoring cycle.
 
@@ -629,12 +771,14 @@ Return ONLY valid JSON matching this schema:
 """
 
     result = call_gemini_json(prompt, max_tokens=3500, temperature=0.1, thinking_budget=1024)
-    if not result:
+    if not isinstance(result, dict) or not result:
         return None
 
     # 1) SEC 공시 원본 정보 매핑 복원
     enriched_sec = []
-    for s_item in result.get("sec_alerts", []):
+    for s_item in (result.get("sec_alerts") or []):
+        if not isinstance(s_item, dict):
+            continue
         sid = s_item.get("sec_id")
         orig_s = sec_map.get(sid)
         if not orig_s:
@@ -648,7 +792,9 @@ Return ONLY valid JSON matching this schema:
 
     # 2) 뉴스 기사 원본 링크 및 언론사 매핑 복원
     enriched_news = []
-    for item in result.get("selected_news", []):
+    for item in (result.get("selected_news") or []):
+        if not isinstance(item, dict):
+            continue
         aid = item.get("article_id")
         orig = idx_map.get(aid)
         if not orig:
@@ -668,6 +814,7 @@ def _render_briefing_message(
     analysis: Dict[str, Any],
     sec_alerts: List[Dict[str, Any]],
     selected_news: List[Dict[str, Any]],
+    market_snapshot: Optional[Dict[str, Any]] = None,
 ) -> str:
     ticker = html.escape(profile.get("ticker", ""))
     company_name = html.escape(profile.get("company_name", ""))
@@ -677,10 +824,34 @@ def _render_briefing_message(
     lines = [
         f"🇺🇸 <b>[미국 주식 밸류체인 & SEC 레이더] {ticker}</b>",
         f"🏢 {company_name}",
+    ]
+
+    if market_snapshot:
+        tq = market_snapshot.get("ticker")
+        if tq:
+            price_line = f"💵 <b>현재가</b>: {_format_quote_change(tq, '$')}"
+            if tq.get("ext_label") and isinstance(tq.get("ext_price"), (int, float)):
+                ext_chg = tq.get("ext_chg_pct")
+                ext_sign = "+" if isinstance(ext_chg, (int, float)) and ext_chg > 0 else ""
+                ext_pct_str = f" ({ext_sign}{ext_chg:.2f}%)" if isinstance(ext_chg, (int, float)) else ""
+                price_line += f" | <b>{html.escape(tq['ext_label'])}</b>: ${tq['ext_price']:,.2f}{ext_pct_str}"
+            lines.append(price_line)
+
+        idx_parts: List[str] = []
+        nq = market_snapshot.get("nasdaq")
+        sq = market_snapshot.get("sp500")
+        if nq:
+            idx_parts.append(f"나스닥 {_format_quote_change(nq, '')}")
+        if sq:
+            idx_parts.append(f"S&amp;P500 {_format_quote_change(sq, '')}")
+        if idx_parts:
+            lines.append(f"📈 <b>시장지수</b>: {' | '.join(idx_parts)}")
+
+    lines.extend([
         f"🧭 풍향계: <b>{sentiment}</b>",
         "",
         f"💡 <b>종합 요약</b>\n{exec_summary}",
-    ]
+    ])
 
     if sec_alerts:
         lines.extend(["", "🏛️ <b>미국 SEC EDGAR 공식 공시 알림</b>"])
@@ -736,17 +907,22 @@ def _render_briefing_message(
     return "\n".join(lines)
 
 
-def build_briefing_message(profile: Dict[str, Any], analysis: Dict[str, Any], max_len: int = 4096) -> str:
+def build_briefing_message(
+    profile: Dict[str, Any],
+    analysis: Dict[str, Any],
+    max_len: int = 4096,
+    market_snapshot: Optional[Dict[str, Any]] = None,
+) -> str:
     sec_list = list(analysis.get("sec_alerts", [])[:5])
     news_list = list(analysis.get("selected_news", [])[:5])
 
-    msg = _render_briefing_message(profile, analysis, sec_list, news_list)
+    msg = _render_briefing_message(profile, analysis, sec_list, news_list, market_snapshot=market_snapshot)
     while len(msg) > max_len and news_list:
         news_list.pop()
-        msg = _render_briefing_message(profile, analysis, sec_list, news_list)
+        msg = _render_briefing_message(profile, analysis, sec_list, news_list, market_snapshot=market_snapshot)
     while len(msg) > max_len and len(sec_list) > 1:
         sec_list.pop()
-        msg = _render_briefing_message(profile, analysis, sec_list, news_list)
+        msg = _render_briefing_message(profile, analysis, sec_list, news_list, market_snapshot=market_snapshot)
     return msg
 
 
@@ -882,12 +1058,16 @@ def main():
             print(f"⏭️ [{ticker}] 지난 체크 이후 새로 올라온 SEC 공시나 미국 기사가 없습니다. (AI 호출 생략)\n")
             continue
 
+        print(f"📈 [{ticker}] 실시간 주가·시간외 및 미 증시 지수 조회 중...")
+        market_snapshot = fetch_us_market_snapshot(ticker)
+
         print(f"🤖 [{ticker}] Gemini SEC 공시 & 밸류체인 연결고리 분석 중...")
         analysis = analyze_intelligence_for_ticker(
             profile,
             new_sec_filings,
             layered_articles,
             recent_sent_topics=state["recent_sent_topics"],
+            market_snapshot=market_snapshot,
         )
         if not analysis:
             print(f"⚠️ [{ticker}] AI 분석 실패 (다음 주기에 재시도합니다).\n")
@@ -906,7 +1086,7 @@ def main():
             print(f"⏭️ [{ticker}] 신규 수집 기사가 모두 이전 발송 주제와 중복되거나 무의미한 소식으로 판별되어 알림을 생략합니다.\n")
             continue
 
-        message = build_briefing_message(profile, analysis)
+        message = build_briefing_message(profile, analysis, market_snapshot=market_snapshot)
 
         if args.dry_run:
             print("\n" + "=" * 64)

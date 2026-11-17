@@ -18,7 +18,7 @@ import json
 import zipfile
 import argparse
 import warnings
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -56,24 +56,34 @@ def load_config() -> Dict:
 
 def load_ipo_state(state_file: Path) -> Dict[str, Any]:
     """
-    발송 이력 및 청약 1일차 리마인더 대기 목록 로드
+    발송 이력, 청약 1일차 리마인더 대기 목록, 주간 캘린더 발송일 로드
     하위 호환성: 기존 리스트 형태면 딕셔너리 형태로 변환
     """
+    default_state = {
+        "sent_rcept_nos": [],
+        "scheduled_reminders": {},
+        "last_weekly_calendar_date": "",
+    }
     if not state_file.exists():
-        return {"sent_rcept_nos": [], "scheduled_reminders": {}}
+        return default_state
     try:
         with open(state_file, "r", encoding="utf-8") as f:
             data = json.load(f)
             if isinstance(data, list):
-                return {"sent_rcept_nos": [str(x) for x in data], "scheduled_reminders": {}}
+                return {
+                    "sent_rcept_nos": [str(x) for x in data],
+                    "scheduled_reminders": {},
+                    "last_weekly_calendar_date": "",
+                }
             if isinstance(data, dict):
                 return {
                     "sent_rcept_nos": [str(x) for x in data.get("sent_rcept_nos", [])],
                     "scheduled_reminders": data.get("scheduled_reminders", {}),
+                    "last_weekly_calendar_date": str(data.get("last_weekly_calendar_date", "")),
                 }
     except Exception:
         pass
-    return {"sent_rcept_nos": [], "scheduled_reminders": {}}
+    return default_state
 
 
 def save_ipo_state(state_file: Path, state: Dict[str, Any], max_history: int = 100) -> None:
@@ -81,7 +91,6 @@ def save_ipo_state(state_file: Path, state: Dict[str, Any], max_history: int = 1
     state["sent_rcept_nos"] = unique_rcepts[-max_history:]
 
     today_kst = datetime.now(KST).date()
-    cutoff_date = today_kst - timedelta(days=14)
     cleaned_reminders: Dict[str, Any] = {}
     for key_id, info in (state.get("scheduled_reminders") or {}).items():
         if not isinstance(info, dict):
@@ -90,18 +99,15 @@ def save_ipo_state(state_file: Path, state: Dict[str, Any], max_history: int = 1
         try:
             sub_date = datetime.strptime(sub_str, "%Y-%m-%d").date()
         except ValueError:
-            if info.get("reminded"):
-                continue
-            cleaned_reminders[key_id] = info
             continue
 
-        if sub_date < cutoff_date:
-            continue
-        if info.get("reminded") and sub_date < today_kst:
+        # 청약 시작일이 오늘보다 과거인 리마인더는 발송 여부와 무관하게 즉시 정리
+        if sub_date < today_kst:
             continue
         cleaned_reminders[key_id] = info
 
     state["scheduled_reminders"] = cleaned_reminders
+    state["last_weekly_calendar_date"] = str(state.get("last_weekly_calendar_date") or "")
     with open(state_file, "w", encoding="utf-8") as f:
         json.dump(state, f, ensure_ascii=False, indent=2)
 
@@ -124,6 +130,7 @@ def fetch_ipo_filings(days: int = 3, only_confirmed: bool = True, exclude_spac: 
             "crtfc_key": DART_API_KEY,
             "bgn_de": bgn_de,
             "end_de": end_de,
+            "corp_cls": "E",
             "pblntf_detail_ty": "C001",
             "page_no": page_no,
             "page_count": 100,
@@ -163,6 +170,79 @@ def fetch_ipo_filings(days: int = 3, only_confirmed: bool = True, exclude_spac: 
 
     print(f"📊 조회된 발행공시 {len(all_items)}건 중 분석 대상 공모주 공시: {len(filtered)}건")
     return filtered
+
+
+def fetch_ipo_withdrawals(days: int = 3, exclude_spac: bool = True) -> List[Dict]:
+    """최근 공시 중 지분증권(공모주) 관련 철회신고서 조회"""
+    today = datetime.now(KST)
+    bgn_de = (today - timedelta(days=days)).strftime("%Y%m%d")
+    end_de = today.strftime("%Y%m%d")
+    url = "https://opendart.fss.or.kr/api/list.json"
+
+    withdrawals: List[Dict] = []
+    page_no = 1
+    while page_no <= 5:
+        try:
+            resp = requests.get(
+                url,
+                params={
+                    "crtfc_key": DART_API_KEY,
+                    "bgn_de": bgn_de,
+                    "end_de": end_de,
+                    "corp_cls": "E",
+                    "pblntf_ty": "C",
+                    "page_no": page_no,
+                    "page_count": 100,
+                },
+                timeout=10,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            if data.get("status") != "000":
+                break
+            items = data.get("list", [])
+            for item in items:
+                report_nm = re.sub(r"\s+", " ", item.get("report_nm", "")).strip()
+                corp_name = item.get("corp_name", "").strip()
+                if "철회신고서" not in report_nm:
+                    continue
+                if exclude_spac and ("기업인수목적" in corp_name or "스팩" in corp_name):
+                    continue
+                withdrawals.append(item)
+            if page_no >= data.get("total_page", 1) or not items:
+                break
+            page_no += 1
+        except Exception as e:
+            print(f"⚠️ 철회신고서 조회 실패: {e}")
+            break
+
+    # 해당 기업이 최근 90일 내 지분증권 공모 신고서를 제출했던 IPO 대상인지 확인
+    confirmed_withdrawals: List[Dict] = []
+    lookback_90 = (today - timedelta(days=90)).strftime("%Y%m%d")
+    for w in withdrawals:
+        cc = w.get("corp_code", "").strip()
+        if not cc:
+            continue
+        try:
+            resp = requests.get(
+                url,
+                params={
+                    "crtfc_key": DART_API_KEY,
+                    "corp_code": cc,
+                    "bgn_de": lookback_90,
+                    "end_de": end_de,
+                    "pblntf_detail_ty": "C001",
+                    "page_count": 20,
+                },
+                timeout=10,
+            )
+            resp.raise_for_status()
+            c_items = resp.json().get("list", [])
+            if any("지분증권" in x.get("report_nm", "") for x in c_items):
+                confirmed_withdrawals.append(w)
+        except Exception:
+            continue
+    return confirmed_withdrawals
 
 
 def _download_dart_xml_text(rcept_no: str) -> Optional[str]:
@@ -428,7 +508,12 @@ def analyze_ipo_with_gemini(extracted_text: str, corp_name: str, report_nm: str)
                     break
                 parts = candidates[0].get("content", {}).get("parts", [])
                 raw_json = "\n".join(p.get("text", "") for p in parts if not p.get("thought") and "text" in p).strip()
-                return json.loads(raw_json)
+                parsed = json.loads(raw_json)
+                if isinstance(parsed, list) and parsed and isinstance(parsed[0], dict):
+                    parsed = parsed[0]
+                if not isinstance(parsed, dict):
+                    raise ValueError("Expected JSON object")
+                return parsed
             except Exception as e:
                 if attempt < 2:
                     time.sleep(2)
@@ -853,6 +938,346 @@ def build_day1_reminder_message(info: Dict[str, Any]) -> str:
     )
 
 
+def build_withdrawal_message(filing: Dict[str, Any]) -> str:
+    """공모주 상장 철회(철회신고서) 감지 시 발송할 즉시 알림 메시지"""
+    corp_name = html.escape(filing.get("corp_name", "Unknown").strip())
+    rcept_no = filing.get("rcept_no", "").strip()
+    rcept_dt = html.escape(filing.get("rcept_dt", "").strip())
+    report_nm = html.escape(re.sub(r"\s+", " ", filing.get("report_nm", "")).strip())
+    dart_link = f"https://dart.fss.or.kr/dsaf001/main.do?rcpNo={rcept_no}"
+
+    return (
+        f"🚫 <b>[공모주 상장 철회] {corp_name}</b>\n"
+        f"• 공시명: {report_nm}\n"
+        f"• 접수일: {rcept_dt}\n"
+        f"• 안내: 해당 기업의 공모 일정이 철회되어 기존 청약 리마인더를 삭제했습니다.\n\n"
+        f'🔗 <a href="{dart_link}">DART 철회신고서 원문 보기</a>'
+    )
+
+
+_BROKER_PATTERNS = [
+    (r"케이비증권|KB증권", "KB증권"),
+    (r"아이비케이투자증권|IBK투자증권", "IBK투자증권"),
+    (r"비엔케이투자증권|BNK투자증권", "BNK투자증권"),
+    (r"엔에이치투자증권|NH투자증권", "NH투자증권"),
+    (r"미래에셋증권", "미래에셋증권"),
+    (r"한국투자증권", "한국투자증권"),
+    (r"삼성증권", "삼성증권"),
+    (r"신한투자증권", "신한투자증권"),
+    (r"대신증권", "대신증권"),
+    (r"신영증권", "신영증권"),
+    (r"유진투자증권|유진증권", "유진투자증권"),
+    (r"하나증권", "하나증권"),
+    (r"키움증권", "키움증권"),
+    (r"우리투자증권", "우리투자증권"),
+    (r"현대차증권", "현대차증권"),
+    (r"한화투자증권", "한화투자증권"),
+    (r"교보증권", "교보증권"),
+    (r"유안타증권", "유안타증권"),
+    (r"DB증권|DB금융투자", "DB증권"),
+    (r"SK증권", "SK증권"),
+    (r"메리츠증권", "메리츠증권"),
+    (r"iM증권|하이투자증권", "iM증권"),
+    (r"LS증권|이베스트투자증권", "LS증권"),
+    (r"다올투자증권", "다올투자증권"),
+    (r"상상인증권", "상상인증권"),
+    (r"부국증권", "부국증권"),
+]
+
+# 청약 초일 전날(D-1)까지 계좌 개설 완료가 필요한 주요 증권사
+_D1_PRE_OPEN_BROKERS = {"NH투자증권", "KB증권", "대신증권", "신한투자증권", "신영증권"}
+
+
+def _extract_brokers_from_overview(overview_text: str) -> List[str]:
+    """공모개요의 인수인 섹션에서 청약 가능 증권사를 순서대로 추출"""
+    compact = re.sub(r"\s+", " ", overview_text)
+    uw_match = re.search(r"(?:인수인|대표주관회사|공동대표주관|공동주관회사)(.{0,900}?)(?:청약기일|납입기일)", compact)
+    target = uw_match.group(1) if uw_match else compact[:1500]
+
+    found_positions: List[Tuple[int, str]] = []
+    for pattern, canonical in _BROKER_PATTERNS:
+        m = re.search(pattern, target, re.IGNORECASE)
+        if m:
+            found_positions.append((m.start(), canonical))
+    found_positions.sort(key=lambda x: x[0])
+    return list(dict.fromkeys(name for _, name in found_positions))
+
+
+def _parse_subscription_period(overview_text: str) -> Optional[Tuple[date, date, str]]:
+    """공모개요 텍스트에서 일반청약일(시작일, 종료일, 표기 문자열) 추출"""
+    compact = re.sub(r"\s+", " ", overview_text)
+    sub_match = re.search(r"(?:일반\s*(?:투자자|청약자)\s*청약일|청약기일)(.{0,300})", compact)
+    search_zone = sub_match.group(1) if sub_match else compact[:1800]
+
+    # 패턴 1: 2026년 12월 14일(월) ~ 2026년 12월 15일(화) 또는 ~ 15일
+    p_kr = re.search(
+        r"(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일(?:\s*\([월화수목금토일]\))?\s*[~\-]\s*"
+        r"(?:(\d{4})\s*년\s*)?(?:(\d{1,2})\s*월\s*)?(\d{1,2})\s*일",
+        search_zone,
+    )
+    if p_kr:
+        sy, sm, sd = int(p_kr.group(1)), int(p_kr.group(2)), int(p_kr.group(3))
+        ey = int(p_kr.group(4)) if p_kr.group(4) else sy
+        em = int(p_kr.group(5)) if p_kr.group(5) else sm
+        ed = int(p_kr.group(6))
+    else:
+        # 패턴 2: 2026.12.14(월)~12.15(화) 또는 2026.12.14 ~ 2026.12.15
+        p_dot = re.search(
+            r"(\d{4})\.(\d{1,2})\.(\d{1,2})(?:\s*\([월화수목금토일]\))?\s*[~\-]\s*"
+            r"(?:(\d{4})\.)?(?:(\d{1,2})\.)?(\d{1,2})(?:\s*\([월화수목금토일]\))?",
+            search_zone,
+        )
+        if not p_dot:
+            return None
+        sy, sm, sd = int(p_dot.group(1)), int(p_dot.group(2)), int(p_dot.group(3))
+        ey = int(p_dot.group(4)) if p_dot.group(4) else sy
+        em = int(p_dot.group(5)) if p_dot.group(5) else sm
+        ed = int(p_dot.group(6))
+
+    try:
+        start_dt = datetime(sy, sm, sd, tzinfo=KST).date()
+        end_dt = datetime(ey, em, ed, tzinfo=KST).date()
+        if end_dt < start_dt and ((p_kr and not p_kr.group(4)) or (not p_kr and not p_dot.group(4))):
+            end_dt = datetime(sy + 1, em, ed, tzinfo=KST).date()
+    except ValueError:
+        return None
+
+    label = f"{start_dt.strftime('%m.%d')}~{end_dt.strftime('%m.%d')}"
+    return start_dt, end_dt, label
+
+
+def _extract_calendar_summary_fields(full_text: str) -> Dict[str, Any]:
+    """증권신고서/투자설명서 본문에서 청약일정, 주관사, 공모가, 유통비율 추출"""
+    overview_matches = list(re.finditer(r"1\.\s*공모개요", full_text))
+    if overview_matches:
+        pos = overview_matches[-1].start()
+        overview_text = full_text[pos : pos + 4500]
+    else:
+        overview_text = full_text[:4500]
+
+    period = _parse_subscription_period(overview_text)
+    if not period:
+        return {}
+
+    start_dt, end_dt, date_label = period
+    brokers = _extract_brokers_from_overview(overview_text)
+
+    compact_ov = re.sub(r"\s+", " ", overview_text)
+    price_str = "미정"
+    is_confirmed = False
+    m_conf = re.search(r"확정공모가액(?:은|인)?\s*([\d,]+)\s*원", compact_ov)
+    m_band = re.search(r"(?:희망공모가액|공모희망가액)(?:은|인|인\s+)?\s*([\d,]+)\s*원?\s*[~\-]\s*([\d,]+)\s*원", compact_ov)
+    if m_conf and "협의" not in compact_ov[m_conf.start() : m_conf.end() + 25]:
+        price_str = f"{m_conf.group(1)}원(확정)"
+        is_confirmed = True
+    elif m_band:
+        price_str = f"{m_band.group(1)}~{m_band.group(2)}원"
+    else:
+        m_any_band = re.search(r"([\d,]{4,})\s*원?\s*[~\-]\s*([\d,]{4,})\s*원", compact_ov)
+        if m_any_band:
+            price_str = f"{m_any_band.group(1)}~{m_any_band.group(2)}원"
+
+    tradable_pct: Optional[float] = None
+    compact_full = re.sub(r"\s+", " ", full_text)
+    total_tr_matches = re.findall(
+        r"(?:의무보유\s*(?:대상|수량|주식)?을\s*제외한[^.]{0,55}?\((?:공모\s*후\s*(?:기준\s*|지분율\s*)?(?:약\s*)?)?(\d{1,2}\.\d{1,2})\s*%\))"
+        r"|(?:(\d{1,2}\.\d{1,2})\s*%\s*에\s*해당하는\s*[\d,]+주는\s*상장\s*직후)"
+        r"|(?:상장\s*직후\s*(?:매각이\s*가능한\s*)?유통\s*가능\s*(?:물량|주식(?:수|비율)?)은\s*(?:최대\s*)?[\d,]+주\s*\((?:공모\s*후\s*(?:기준\s*|지분율\s*)?(?:약\s*)?|상장예정주식수의\s*)?(\d{1,2}\.\d{1,2})\s*%\))"
+        r"|(?:상장\s*직후\s*(?:매각이\s*가능한\s*)?유통\s*가능\s*(?:물량|주식(?:수|비율)?)(?:은|는)\s*(?:상장예정주식수의\s*)?(\d{1,2}\.\d{1,2})\s*%)",
+        compact_full,
+    )
+    tr_vals = [float(next(x for x in tup if x)) for tup in total_tr_matches if any(tup)]
+    tr_vals = [v for v in tr_vals if v >= 15.0]
+    if tr_vals:
+        tradable_pct = tr_vals[-1]
+    else:
+        fallback_matches = re.findall(
+            r"유통\s*가능\s*(?:한\s*물량|물량|주식(?:수|비율)?)(?:은|는|:)[^.\d%]{0,40}?(\d{1,2}\.\d{1,2})\s*%",
+            compact_full,
+        )
+        fb_vals = [float(v) for v in fallback_matches if float(v) >= 15.0]
+        if fb_vals:
+            tradable_pct = fb_vals[0]
+
+    return {
+        "start_date": start_dt,
+        "end_date": end_dt,
+        "date_label": date_label,
+        "brokers": brokers,
+        "price_str": price_str,
+        "is_confirmed": is_confirmed,
+        "tradable_pct": tradable_pct,
+    }
+
+
+def fetch_upcoming_ipo_calendar(exclude_spac: bool = True, lookahead_days: int = 21) -> List[Dict[str, Any]]:
+    """향후 N일 이내 청약 예정인 모든 공모주(DART 신고서 기준)의 일정·주관사 수집"""
+    today = datetime.now(KST)
+    today_date = today.date()
+    max_start_date = today_date + timedelta(days=lookahead_days)
+    bgn_60 = (today - timedelta(days=60)).strftime("%Y%m%d")
+    end_de = today.strftime("%Y%m%d")
+    url = "https://opendart.fss.or.kr/api/list.json"
+
+    # 1) 최근 60일 내 비상장법인 지분증권 증권신고서 목록 확보
+    corp_map: Dict[str, str] = {}
+    page_no = 1
+    while page_no <= 6:
+        try:
+            resp = requests.get(
+                url,
+                params={
+                    "crtfc_key": DART_API_KEY,
+                    "bgn_de": bgn_60,
+                    "end_de": end_de,
+                    "corp_cls": "E",
+                    "pblntf_detail_ty": "C001",
+                    "page_no": page_no,
+                    "page_count": 100,
+                },
+                timeout=10,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            if data.get("status") != "000":
+                break
+            items = data.get("list", [])
+            for it in items:
+                rnm = it.get("report_nm", "")
+                cname = it.get("corp_name", "").strip()
+                cc = it.get("corp_code", "").strip()
+                if "지분증권" not in rnm or not cc:
+                    continue
+                if exclude_spac and ("기업인수목적" in cname or "스팩" in cname):
+                    continue
+                corp_map.setdefault(cc, cname)
+            if page_no >= data.get("total_page", 1) or not items:
+                break
+            page_no += 1
+        except Exception as e:
+            print(f"⚠️ 주간 캘린더 DART 목록 조회 실패: {e}")
+            break
+
+    # 2) 기업별 최신 공시 상태(철회/완료 제외) 및 원문 파싱
+    calendar_items: List[Dict[str, Any]] = []
+    for cc, cname in corp_map.items():
+        try:
+            resp = requests.get(
+                url,
+                params={
+                    "crtfc_key": DART_API_KEY,
+                    "corp_code": cc,
+                    "bgn_de": bgn_60,
+                    "end_de": end_de,
+                    "pblntf_ty": "C",
+                    "page_count": 20,
+                },
+                timeout=10,
+            )
+            resp.raise_for_status()
+            c_filings = resp.json().get("list", [])
+        except Exception:
+            continue
+
+        if not c_filings:
+            continue
+
+        # 철회신고서 또는 발행실적보고서가 최신 공모 신고서 이후에 제출됐으면 제외
+        latest_names = [x.get("report_nm", "") for x in c_filings]
+        if any("철회신고서" in nm or "증권발행실적보고서" in nm for nm in latest_names[:3]):
+            continue
+
+        # 본문이 담긴 최신 문서 선택 (단순 첨부추가/첨부정정은 후순위)
+        candidate_filings = [
+            x for x in c_filings
+            if ("투자설명서" in x.get("report_nm", "") or "증권신고서(지분증권)" in x.get("report_nm", ""))
+        ]
+        candidate_filings.sort(
+            key=lambda x: (
+                0 if ("[첨부추가]" in x.get("report_nm", "") or "[첨부정정]" in x.get("report_nm", "")) else 1,
+                x.get("rcept_no", ""),
+            ),
+            reverse=True,
+        )
+
+        parsed_info: Dict[str, Any] = {}
+        chosen_rno = ""
+        for cf in candidate_filings[:2]:
+            rno = cf.get("rcept_no", "").strip()
+            txt = _download_dart_xml_text(rno)
+            if not txt:
+                continue
+            parsed = _extract_calendar_summary_fields(txt)
+            if parsed:
+                parsed_info = parsed
+                chosen_rno = rno
+                break
+
+        if not parsed_info:
+            continue
+
+        if parsed_info["end_date"] < today_date or parsed_info["start_date"] > max_start_date:
+            continue
+
+        calendar_items.append({
+            "corp_code": cc,
+            "corp_name": cname,
+            "rcept_no": chosen_rno,
+            **parsed_info,
+        })
+
+    calendar_items.sort(key=lambda x: (x["start_date"], x["corp_name"]))
+    return calendar_items
+
+
+def build_weekly_calendar_message(items: List[Dict[str, Any]], today_date: date) -> str:
+    """주간 공모주 청약 & 계좌 준비 캘린더 메시지 생성"""
+    end_window = today_date + timedelta(days=21)
+    header_range = f"{today_date.strftime('%m.%d')} ~ {end_window.strftime('%m.%d')}"
+
+    if not items:
+        return (
+            f"📅 <b>[주간 공모주 청약 캘린더] ({header_range})</b>\n\n"
+            f"향후 3주 이내 예정된 일반 공모주 청약 일정이 없습니다."
+        )
+
+    lines = [
+        f"📅 <b>[주간 공모주 청약 &amp; 계좌 준비 캘린더]</b>",
+        f"🗓️ 조회 범위: {header_range} (총 {len(items)}건)",
+        "",
+    ]
+
+    all_brokers: List[str] = []
+    for idx, it in enumerate(items, 1):
+        cname = html.escape(it["corp_name"])
+        d_label = html.escape(it["date_label"])
+        p_str = html.escape(it["price_str"])
+        brokers = it.get("brokers") or []
+        all_brokers.extend(brokers)
+        b_str = html.escape(", ".join(brokers)) if brokers else "확인 필요"
+        tr_pct = it.get("tradable_pct")
+        tr_str = f" | 유통 {tr_pct:.1f}%" if isinstance(tr_pct, float) else ""
+        rno = it.get("rcept_no", "")
+        dart_link = f"https://dart.fss.or.kr/dsaf001/main.do?rcpNo={rno}"
+
+        lines.append(f'<b>{idx}. {cname}</b> ({d_label})')
+        lines.append(f"• 공모가: {p_str}{tr_str}")
+        lines.append(f'• 청약 증권사: <b>{b_str}</b> (<a href="{dart_link}">신고서</a>)')
+        lines.append("")
+
+    unique_brokers = list(dict.fromkeys(all_brokers))
+    d1_list = [b for b in unique_brokers if b in _D1_PRE_OPEN_BROKERS]
+    same_day_list = [b for b in unique_brokers if b not in _D1_PRE_OPEN_BROKERS]
+
+    lines.append("🏦 <b>계좌 사전 준비 가이드</b>")
+    if d1_list:
+        lines.append(f"• ⚠️ <b>청약 전날(D-1)까지 개설 필수</b>: {html.escape(', '.join(d1_list))}")
+    if same_day_list:
+        lines.append(f"• ✅ <b>청약 당일 개설 가능</b>: {html.escape(', '.join(same_day_list))}")
+
+    return "\n".join(lines)
+
+
 def _truncate_telegram_html(message: str, limit: int = 4096) -> str:
     """Telegram 4,096자 제한 초과 시 하단 링크를 보존하며 HTML 태그 손상 없이 안전하게 절삭"""
     if len(message) <= limit:
@@ -910,6 +1335,7 @@ def main():
     parser = argparse.ArgumentParser(description="AI 공모주 100점 스코어링 봇")
     parser.add_argument("--dry-run", action="store_true", help="Telegram 발송 없이 콘솔에 스코어링 결과 출력")
     parser.add_argument("--days", type=int, default=3, help="조회할 최근 일수 (기본값: 3일)")
+    parser.add_argument("--weekly-calendar", action="store_true", help="주간 공모주 청약 및 계좌 준비 캘린더 즉시 발송/테스트")
     args = parser.parse_args()
 
     config = load_config()
@@ -947,6 +1373,29 @@ def main():
     reminders = state["scheduled_reminders"]
     state_changed = False
 
+    # 0) 공모주 상장 철회(철회신고서) 감지 및 즉시 알림
+    withdrawals = fetch_ipo_withdrawals(days=args.days, exclude_spac=exclude_spac)
+    new_withdrawals = [w for w in reversed(withdrawals) if w.get("rcept_no") not in sent_set]
+    for w in new_withdrawals:
+        w_rno = w.get("rcept_no", "").strip()
+        w_cc = w.get("corp_code", "").strip()
+        w_cname = w.get("corp_name", "").strip()
+        w_msg = build_withdrawal_message(w)
+        if args.dry_run:
+            print(f"  🚫 [상장 철회 감지] {w_cname}")
+            for line in w_msg.splitlines():
+                print(f"  {line}")
+            print()
+        elif send_telegram_message(w_msg):
+            print(f"  🚫 상장 철회 알림 발송 완료: {w_cname} ({w_rno})")
+            state["sent_rcept_nos"].append(w_rno)
+            sent_set.add(w_rno)
+            if w_cc in reminders:
+                del reminders[w_cc]
+            for rk in [k for k, v in reminders.items() if isinstance(v, dict) and v.get("corp_name") == w_cname]:
+                del reminders[rk]
+            state_changed = True
+
     # 1) [타이밍 1] 신규 수요예측 확정 공시([발행조건확정]) 스코어링 및 발송
     filings = fetch_ipo_filings(days=args.days, only_confirmed=only_confirmed, exclude_spac=exclude_spac)
     new_filings = [f for f in reversed(filings) if f.get("rcept_no") not in sent_set]
@@ -963,6 +1412,29 @@ def main():
         extracted = extract_ipo_sections(rcept_no, corp_code=corp_code)
         raw_data = analyze_ipo_with_gemini(extracted, corp_name, report_nm) if extracted else None
         score_res = score_ipo_data(raw_data) if raw_data else None
+
+        # 동일 기업의 [발행조건확정] 재정정 시 공모가가 같으면 중복 리포트 발송 방지
+        existing_key = corp_code if corp_code in reminders else next(
+            (k for k, v in reminders.items() if isinstance(v, dict) and v.get("corp_name") == corp_name),
+            None,
+        )
+        if existing_key and raw_data:
+            existing_info = reminders[existing_key]
+            new_price = raw_data.get("confirmed_price")
+            if new_price is not None and new_price == existing_info.get("confirmed_price"):
+                print(f"  ⏭️ 동일 공모가({new_price:,}원) 재정정 공시로 중복 리포트 생략")
+                new_sub_start = str(raw_data.get("subscription_start_date") or "").strip()
+                if not args.dry_run:
+                    if re.match(r"^\d{4}-\d{2}-\d{2}$", new_sub_start) and new_sub_start != existing_info.get("subscription_start_date"):
+                        existing_info["subscription_start_date"] = new_sub_start
+                        existing_info["subscription_date"] = raw_data.get("subscription_date", existing_info.get("subscription_date", ""))
+                        existing_info["rcept_no"] = rcept_no
+                        existing_info["reminded"] = False
+                    state["sent_rcept_nos"].append(rcept_no)
+                    sent_set.add(rcept_no)
+                    state_changed = True
+                continue
+
         message = build_ipo_message(filing, raw_data, score_res)
 
         if args.dry_run:
@@ -974,6 +1446,7 @@ def main():
         elif send_telegram_message(message):
             print(f"  ✅ 1차 스코어링 리포트 발송 완료 ({rcept_no})")
             state["sent_rcept_nos"].append(rcept_no)
+            sent_set.add(rcept_no)
             state_changed = True
 
             # [타이밍 2 예약] 일반청약 1일차 리마인더 등록
@@ -1009,6 +1482,27 @@ def main():
                 print(f"  🔔 청약 1일차 리마인더 발송 완료: {info.get('corp_name')}")
                 info["reminded"] = True
                 state_changed = True
+
+    # 3) [주간 캘린더] 일요일 오전 또는 --weekly-calendar 지정 시 향후 청약 & 계좌 준비 캘린더 발송
+    should_send_weekly = args.weekly_calendar or (
+        now_kst.weekday() == 6 and state.get("last_weekly_calendar_date") != today_iso
+    )
+    if should_send_weekly:
+        print("📅 주간 공모주 청약 & 계좌 준비 캘린더 수집 중...")
+        cal_items = fetch_upcoming_ipo_calendar(exclude_spac=exclude_spac)
+        cal_msg = build_weekly_calendar_message(cal_items, now_kst.date())
+        if args.dry_run:
+            print("  📅 [주간 공모주 청약 캘린더 미리보기]")
+            print("  " + "=" * 58)
+            for line in cal_msg.splitlines():
+                print(f"  {line}")
+            print("  " + "=" * 58 + "\n")
+        elif send_telegram_message(cal_msg):
+            print(f"  ✅ 주간 공모주 청약 캘린더 발송 완료 ({len(cal_items)}건)")
+            state["last_weekly_calendar_date"] = today_iso
+            state_changed = True
+        else:
+            print("  ❌ 주간 공모주 청약 캘린더 발송 실패")
 
     if state_changed and not args.dry_run:
         save_ipo_state(state_file, state, max_history)

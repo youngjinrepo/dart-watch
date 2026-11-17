@@ -3,6 +3,22 @@ name: 미국 주식 밸류체인 레이더 (US News)
 on:
   # Google Apps Script (google_apps_script.js)에서 1시간마다 workflow_dispatch로 즉시 깨움 (지연 0초)
   workflow_dispatch:
+    inputs:
+      ticker:
+        description: "단일 티커만 실행 (비우면 config.json 전체)"
+        required: false
+        default: ""
+        type: string
+      refresh_profile:
+        description: "밸류체인 검색 프로필 강제 재생성"
+        required: false
+        default: false
+        type: boolean
+      include_recent_sec:
+        description: "최근 30일 내 SEC 공시 포함 조회"
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: ${{ github.workflow }}
@@ -44,7 +60,18 @@ jobs:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: python news_main.py
+        run: |
+          ARGS=""
+          if [ -n "${{ inputs.ticker }}" ]; then
+            ARGS="$ARGS --ticker ${{ inputs.ticker }}"
+          fi
+          if [ "${{ inputs.refresh_profile }}" = "true" ]; then
+            ARGS="$ARGS --refresh-profile"
+          fi
+          if [ "${{ inputs.include_recent_sec }}" = "true" ]; then
+            ARGS="$ARGS --include-recent-sec"
+          fi
+          python news_main.py $ARGS
 
       - name: Save bot state to bot-state branch (Keep main clean)
         run: |

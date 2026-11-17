@@ -62,6 +62,7 @@ function schedulerTick() {
 
   // -------------------------------------------------------------------------
   // 2) 공모주(IPO) 스코어링 알림 (ipo.yml): 평일(월~금) 08:30 / 16:00 / 20:00
+  //    + 매주 일요일 09:00 주간 공모주 청약 & 계좌 준비 캘린더 브리핑
   // -------------------------------------------------------------------------
   if (isWeekday) {
     const isIpo0830 = kstHour === 8 && kstMin >= 30;
@@ -75,6 +76,8 @@ function schedulerTick() {
     } else if (isIpo2000) {
       triggerOncePerSlot("ipo.yml", `ipo_${kstDateStr}_20:00`);
     }
+  } else if (kstDayOfWeek === 7 && kstHour === 9 && kstMin < 30) {
+    triggerOncePerSlot("ipo.yml", `ipo_weekly_${kstDateStr}_09:00`);
   }
 
   // -------------------------------------------------------------------------

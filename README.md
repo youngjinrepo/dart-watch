@@ -12,23 +12,25 @@
    - **Google Gemini** 모델 폴백 체인(`gemini-3-flash-preview` → `gemini-2.5-flash` → `gemini-3.1-flash-lite`)을 사용해 투자자 관점 3줄 요약을 생성합니다. (API 키 미설정·실패 시 원문 핵심 항목을 자동 발췌)
    - 발송 완료된 접수번호(`rcept_no`)를 `sent.json`에 순서대로 기록하여 중복 발송을 방지합니다.
 
-2. **AI 공모주(IPO) 100점 스코어링 알림 (`ipo_main.py`)**
+2. **AI 공모주(IPO) 100점 스코어링 & 주간 청약 캘린더 (`ipo_main.py`)**
    - DART 발행공시(`C001`, 비상장법인 `E`)에서 **`[발행조건확정]증권신고서(지분증권)`** 및 본 투자설명서/증권신고서 원문을 결합해 수집합니다.
    - 7대 평가 항목(**기업 경쟁력 15점, 밸류에이션 20점, 유통가능 물량 20점, 기관 경쟁률 5점, 가격 제시 분포 15점, 의무보유확약 15점, 공모 구조 10점**)을 결정론적 스코어링 엔진으로 채점합니다.
    - 단일/복합 위험 등급 상한(Cap) 및 자료 완성도(80% 미만 시 분석 보류) 규칙을 적용합니다.
-   - **2단계 알림 타이밍**: ① 기관 수요예측 확정 공시 직후 정밀 스코어링 리포트 발송 + ② 일반청약 1일차 당일 리마인더 발송 (`ipo_sent.json`에 예약, 완료/만료 항목 자동 정리).
+   - **2단계 알림 타이밍 + 상장 철회 감지**: ① 기관 수요예측 확정 공시 직후 정밀 스코어링 리포트 발송(동일 공모가 재정정 중복 방지) + ② 일반청약 1일차 당일 리마인더 발송 + ③ `철회신고서` 제출 시 즉시 철회 알림 및 리마인더 삭제.
+   - **일요일 오전 주간 청약 & 계좌 준비 캘린더**: 매주 일요일 09:00(또는 `--weekly-calendar`) 실행 시 향후 3주간 예정된 공모주의 청약 일정·공모가·유통물량·주관사 및 전일(D-1) 계좌개설 필수 증권사 가이드를 한 번에 브리핑합니다.
 
 3. **미국 주식 밸류체인 & SEC EDGAR 인텔리전스 레이더 (`news_main.py`)**
    - `config.json`의 `news.us_tickers`에 티커를 지정하면 100% 영문 추론(Thinking)으로 3계층(직접 이슈 / 전방 수요·CapEx / 생태계·경쟁사) 검색 프로필(`us_stock_profiles.json`)을 자동 생성·캐싱합니다.
+   - **실시간 주가·시간외 시세 및 지수 연동**: 브리핑 상단에 대상 종목의 정규장 현재가·등락률·프리/애프터마켓 시세와 **나스닥(`^IXIC`)·S&P 500(`^GSPC`)** 지수를 함께 표시합니다.
    - **SEC EDGAR 공식 서버**(`data.sec.gov`)에서 `8-K`, `10-Q`, `10-K`, `Form 4`(내부자 매매), `SC 13D/G` 공시를 API 키 없이 감지·요약합니다.
    - **Google News US (영문 RSS)**에서 3계층 뉴스를 수집하고 유사 제목 중복 차단 후 Gemini로 2차 연결고리까지 한국어 브리핑을 생성합니다.
    - 새로 올라온 SEC 공시나 뉴스가 없으면 AI 호출 없이 1초 만에 종료됩니다.
 
-4. **정시 실행 자동화 (`google_apps_script.js` + `.github/workflows/`)**
+4. **정시 실행 자동화 & 수동 실행 옵션 (`google_apps_script.js` + `.github/workflows/`)**
    - GitHub Actions `schedule(cron)` 지연을 피하기 위해 **Google Apps Script(`google_apps_script.js`)**가 10분마다 실행되며 KST 정시에 각 워크플로우의 `workflow_dispatch` API를 호출합니다.
    - **`dart.yml` (국내 DART 공시)**: 평일 **08:00 ~ 19:00 (KST) 30분 간격**
-   - **`ipo.yml` (공모주 스코어링 & 리마인더)**: 평일 **08:30 / 16:00 / 20:00 (KST)**
-   - **`us_news.yml` (미국 주식 밸류체인 & SEC 레이더)**: 월~토 **매시 정각 (KST) 1시간 간격**
+   - **`ipo.yml` (공모주 스코어링 & 리마인더)**: 평일 **08:30 / 16:00 / 20:00 (KST)** + 일요일 **09:00 (KST) 주간 캘린더** (수동 실행 시 `days`, `weekly_calendar` 입력 가능)
+   - **`us_news.yml` (미국 주식 밸류체인 & SEC 레이더)**: 월~토 **매시 정각 (KST) 1시간 간격** (수동 실행 시 `ticker`, `refresh_profile`, `include_recent_sec` 입력 가능)
 
 ---
 
@@ -64,9 +66,10 @@ GEMINI_API_KEY=your-gemini-api-key
 python main.py
 python main.py --dry-run --days 10
 
-# 공모주(IPO) 100점 스코어링 실행 및 로컬 테스트
+# 공모주(IPO) 100점 스코어링 실행 및 로컬 테스트 / 주간 캘린더 미리보기
 python ipo_main.py
 python ipo_main.py --dry-run --days 5
+python ipo_main.py --dry-run --weekly-calendar
 
 # 미국 주식 밸류체인 & SEC 레이더 실행 및 로컬 테스트
 python news_main.py
@@ -102,4 +105,5 @@ python debug_dart.py
 ### 5. 공모주(IPO) 100점 스코어링 원문 결합 및 보류 기준
 - `[발행조건확정]` 정정신고서는 정정 내용만 담고 있어 재무제표나 유통가능 물량 표가 누락되는 경우가 많습니다. 이를 보완하기 위해 `ipo_main.py`는 원문 길이가 **25만 자 미만**일 때 최근 180일 내 동일 기업의 `투자설명서` 또는 `증권신고서(지분증권)`(15만 자 이상)를 자동으로 찾아 결합합니다.
 - 추출된 항목 중 확인 가능한 배점의 합이 **80% 미만(`completeness_pct < 80`)**이면 잘못된 고득점·저득점을 막기 위해 `분석 보류`로 판정합니다.
-- 청약 1일차 리마인더(`scheduled_reminders`)는 발송 완료 후 청약 시작일이 지나거나 14일이 경과하면 `save_ipo_state()`에서 자동 정리됩니다.
+- 청약 1일차 리마인더(`scheduled_reminders`)는 발송 완료 여부와 무관하게 청약 시작일이 오늘보다 과거가 되면 `save_ipo_state()`에서 즉시 정리됩니다.
+- **Google Apps Script 업데이트 주의**: `google_apps_script.js`에 일요일 09:00 주간 캘린더 트리거가 추가되었으므로, Git에 반영한 뒤 Google Apps Script 웹 편집기에도 최신 `google_apps_script.js` 내용을 붙여넣고 저장해야 일요일 자동 실행이 활성화됩니다.
