@@ -423,7 +423,9 @@ def analyze_ipo_with_gemini(extracted_text: str, corp_name: str, report_nm: str)
 4. 의무보유확약 비율(lockup_ratio_pct)은 '기관 신청 수량 합계' 대비 '확약 신청 수량(6개월+3개월+1개월+15일 합계, 즉 합계 - 미확약)'의 비율(%)로 계산하세요.
 5. 장기 확약 비중(long_term_lockup_share_pct)은 '전체 의무보유확약 신청 수량' 중에서 '3개월 확약 + 6개월 확약 수량'이 차지하는 비중(%)입니다. (확약 수량이 0이면 0.0)
 6. 신주모집 비율(new_share_ratio_pct)은 전체 공모주식수 중 신주모집 주식수의 비율(%)입니다. (전량 신주모집이면 100.0)
-7. 정성/반정량 평가 점수는 아래 기준표 배점 내에서만 부여하고, 원문에서 전혀 판단할 수 없으면 null을 기재하세요:
+7. 희망공모가 밴드 하단 미만 비율(below_band_low_ratio_pct)은 기관 수요예측 신청 수량 중 희망공모가 하단 미만 가격을 제시한 수량의 비율(%)입니다. (가격미제시 제외, 원문 표 확인 가능 시 숫자, 불가 시 null)
+8. 장기 확약 신청 수량(long_term_lockup_apply_shares)은 의무보유확약 참여내역 표에서 3개월 확약 + 6개월 확약 신청 수량의 합계(주)입니다.
+9. 정성/반정량 평가 점수는 아래 기준표 배점 내에서만 부여하고, 원문에서 전혀 판단할 수 없으면 null을 기재하세요:
    - rev_profit_growth_score (0~6점): 지속적 매출 성장+영업이익 증가(6), 성장하나 실적 변동성 존재(4), 최근 흑자전환 또는 성장 둔화(2), 적자 지속/기술특례 적자 및 악화(0~1)
    - cashflow_health_score (0~4점): 영업현금흐름 지속 흑자+부채 안정(4), 혼재하나 무난(3), 순이익·현금흐름 괴리 또는 부채 증가(2), 현금흐름 악화 및 유동성 위험(0~1)
    - customer_diversification_score (0~5점): 고객·제품 다변화/최대고객 20% 미만(5), 최대고객 20~30%(4), 30~50%(3), 50~70%(2), 70~80%(1), 80% 이상(0)
@@ -450,10 +452,15 @@ def analyze_ipo_with_gemini(extracted_text: str, corp_name: str, report_nm: str)
   "tradable_amount_eok": 확정공모가 기준 상장 직후 유통가능 금액(억 원 단위 float, 확인불가시 null),
   "competition_rate": 기관 수요예측 경쟁률(:1 제외한 float, 예: 1051.38),
   "price_at_or_above_confirmed_ratio_pct": 최종 공모가 이상 가격 제시 신청 수량 비율(%, 가격미제시 제외, float 또는 null),
+  "below_band_low_ratio_pct": 희망공모가 하단 미만 가격 제시 신청 수량 비율(%, float 또는 null),
   "unpriced_ratio_pct": 가격 미제시 신청 수량 비율(%, float 또는 null),
   "lockup_ratio_pct": 기관 신청 수량 기준 의무보유확약 비율(%, float 또는 null),
   "long_term_lockup_share_pct": 전체 의무보유확약 수량 중 3개월+6개월 확약 수량 비중(%, float 또는 null),
+  "long_term_lockup_apply_shares": 의무보유확약 내역 중 3개월+6개월 장기 확약 신청 수량 합계(주, 정수 또는 null),
   "new_share_ratio_pct": 신주모집 비율(%, 전량 신주모집이면 100.0, float 또는 null),
+  "has_putback_option": 일반청약자 환매청구권(풋백옵션) 부여 여부(true/false),
+  "hot_theme_tags": ["AI", "로봇", "방산", "우주", "조선", "반도체", "양자", "전력설비 중 해당 주도 테마 태그만 기재, 없으면 빈 배열 []"],
+  "existing_shareholder_low_price_risk": "상장 직후 유통물량 내 공모가 대비 저가 취득 기존주주(VC·개인) 차익실현 매물 위험도 (낮음/보통/높음 중 택1)",
   "rev_profit_growth_score": 0~6 사이 정수 또는 null,
   "cashflow_health_score": 0~4 사이 정수 또는 null,
   "customer_diversification_score": 0~5 사이 정수 또는 null,
@@ -476,7 +483,7 @@ def analyze_ipo_with_gemini(extracted_text: str, corp_name: str, report_nm: str)
     for model_name in models:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
         gen_cfg: Dict[str, Any] = {
-            "maxOutputTokens": 2048,
+            "maxOutputTokens": 2560,
             "temperature": 0.0,
             "responseMimeType": "application/json",
         }
@@ -803,7 +810,7 @@ def score_ipo_data(data: Dict[str, Any]) -> Dict[str, Any]:
         if final_grade != base_grade:
             verdict_label += f" [원등급 {base_grade}→위험상한 {final_grade}]"
 
-    return {
+    score_res = {
         "categories": categories,
         "raw_earned": raw_earned,
         "available_max": available_max,
@@ -813,6 +820,114 @@ def score_ipo_data(data: Dict[str, Any]) -> Dict[str, Any]:
         "final_grade": final_grade,
         "verdict_label": verdict_label,
         "warnings_triggered": warnings_triggered,
+    }
+    score_res["contrarian_scalp"] = evaluate_contrarian_scalp(data, score_res)
+    return score_res
+
+
+_ALLOWED_HOT_THEMES = {"AI", "로봇", "방산", "우주", "조선", "반도체", "양자", "전력설비"}
+
+
+def evaluate_contrarian_scalp(data: Dict[str, Any], score_result: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    트랙 2: 정석 장기·비례 관점과 별개로 상장 첫날 장초반 시초가 슈팅(래블업·엘리스형) 및
+    역발상 균등 빈집털이(엠비디·글로벌테크놀로지형) 수급 변수 진단
+    """
+    scalp_score = 0
+    signals: List[str] = []
+
+    trad_amt = data.get("tradable_amount_eok")
+    band_low = data.get("band_low")
+    conf_price = data.get("confirmed_price")
+    below_band_pct = data.get("below_band_low_ratio_pct")
+    lt_shares = data.get("long_term_lockup_apply_shares")
+    lt_share_pct = data.get("long_term_lockup_share_pct")
+    has_putback = bool(data.get("has_putback_option"))
+    raw_themes = data.get("hot_theme_tags") or []
+    themes = [str(t).strip() for t in raw_themes if str(t).strip() in _ALLOWED_HOT_THEMES]
+    low_price_risk = str(data.get("existing_shareholder_low_price_risk") or "").strip()
+    final_grade = score_result.get("final_grade", "C")
+
+    # 1) 상장일 유통 금액 무게
+    if isinstance(trad_amt, (int, float)):
+        if trad_amt <= 300:
+            scalp_score += 3
+            signals.append(f"유통금액 {trad_amt:,.0f}억 (300억 이하 초경량·품절주 효과 기대)")
+        elif trad_amt <= 420:
+            scalp_score += 2
+            signals.append(f"유통금액 {trad_amt:,.0f}억 (경량·단타 시초가 부양 가능)")
+        elif trad_amt <= 550:
+            signals.append(f"유통금액 {trad_amt:,.0f}억 (중형·보통 수급 무게)")
+        else:
+            scalp_score -= 3
+            signals.append(f"유통금액 {trad_amt:,.0f}억 (550억 초과·시초가 매물 부담)")
+
+    # 2) 밴드 하단 대비 공모가 결정 (할인 안전마진 vs 하단 고수 강행)
+    if isinstance(band_low, (int, float)) and band_low > 0 and isinstance(conf_price, (int, float)):
+        band_diff_pct = ((conf_price - band_low) / band_low) * 100.0
+        if band_diff_pct <= -15.0:
+            scalp_score += 3
+            signals.append(f"공모가 대폭 할인 (희망밴드 하단 대비 {band_diff_pct:.1f}% 안전마진)")
+        elif band_diff_pct <= -5.0:
+            scalp_score += 2
+            signals.append(f"공모가 하단 미만 인하 (하단 대비 {band_diff_pct:.1f}%)")
+        elif band_diff_pct <= 0.0 and isinstance(below_band_pct, (int, float)) and below_band_pct >= 50.0:
+            scalp_score -= 2
+            signals.append(f"하단 미만 신청 과반({below_band_pct:.1f}%)에도 하단 가격 고수 강행")
+
+    # 3) 단타 주도 테마 흡입력
+    if themes:
+        scalp_score += 2
+        signals.append(f"주도 테마({', '.join(themes[:3])}) 단타 수급 유입·장초반 윗꼬리(래블업·엘리스형) 기대")
+
+    # 4) 장기확약 몰아주기 여지 & 환매청구권(풋백옵션)
+    if (isinstance(lt_shares, (int, float)) and lt_shares >= 100000) or (
+        isinstance(lt_share_pct, (int, float)) and lt_share_pct >= 30.0
+    ):
+        scalp_score += 1
+        lt_desc = f"{int(lt_shares):,}주" if isinstance(lt_shares, (int, float)) else f"{lt_share_pct:.1f}%"
+        signals.append(f"3·6개월 장기확약 신청 물량 존재({lt_desc}, 주관사 우선배정 시 확약률 상승 여지)")
+    if has_putback:
+        scalp_score += 2
+        signals.append("환매청구권(풋백옵션) 부여로 하방 리스크 제한")
+
+    # 5) 기존주주 저가 물량 경고
+    if low_price_risk == "높음":
+        penalty = -2 if (isinstance(trad_amt, (int, float)) and trad_amt > 500) else -1
+        scalp_score += penalty
+        signals.append("기존 주주 저가 취득 물량 상장 직후 차익실현(윗꼬리 후 급락) 주의")
+
+    # 최종 역발상/시초가 판정
+    if final_grade in ("A", "B"):
+        scalp_verdict = "🟢 정석·시초가 모두 우위 (균등+비례 가능)"
+        scalp_strategy = "기관 수요예측과 기초 체력이 탄탄해 균등·비례 병행이 가능한 정석 우량주입니다."
+    elif scalp_score >= 3 and (not isinstance(trad_amt, (int, float)) or trad_amt <= 450):
+        scalp_verdict = "⚡ 역발상 균등 단타 유력 (09:00~09:15 시초가 윗꼬리 매도)"
+        scalp_strategy = (
+            "정량 점수는 낮지만 가벼운 유통금액·할인/테마 수급으로 장초반 시초가 윗꼬리가 기대됩니다. "
+            "대출 비례는 피하고 균등 소액 진입 후 장초반 기계적 매도를 권장합니다."
+        )
+    elif scalp_score >= 1 and (not isinstance(trad_amt, (int, float)) or trad_amt <= 500):
+        scalp_verdict = "🟡 균등 소액만 조건부 타진 (장초반 윗꼬리·본전 칼대응 필수, 비례 금지)"
+        scalp_strategy = (
+            "단기 반등 실마리는 있으나 하방 압력도 존재합니다. "
+            "손실이 제한적인 최소 균등만 검토하고 시초가 슈팅·본전 부근에서 즉시 대응하세요."
+        )
+    elif themes and (scalp_score >= 0 or (isinstance(lt_shares, (int, float)) and lt_shares >= 100000)):
+        scalp_verdict = "⚠️ 고위험 시초가 윗꼬리 전용 (래블업·엘리스형 — 09:05 내 칼매도 필수)"
+        scalp_strategy = (
+            "유통금액이 무거워 장중·종가 보유 시 급락 위험이 크지만, 주도 테마 수급과 확약 요인으로 "
+            "장초반 윗꼬리(시초가 반짝)나 과매도 반등이 나올 수 있습니다. 비례는 절대 피하고 균등 소액 장초반 매도만 고려하세요."
+        )
+    else:
+        scalp_verdict = "☠️ 시초가 직행 하락 위험 (역발상 비추천·패스)"
+        scalp_strategy = "유통금액 부담 또는 가격 메리트·주도 테마 모멘텀 부재로 시초가부터 매물 압박이 클 위험이 높습니다."
+
+    return {
+        "scalp_score": scalp_score,
+        "scalp_verdict": scalp_verdict,
+        "scalp_signals": signals,
+        "scalp_strategy": scalp_strategy,
     }
 
 
@@ -903,6 +1018,16 @@ def build_ipo_message(filing: Dict, data: Optional[Dict], score_result: Optional
         lines.append("<b>[최종 판단]</b>")
         lines.append(html.escape(str(final_comment)))
 
+    scalp = score_result.get("contrarian_scalp")
+    if isinstance(scalp, dict) and scalp.get("scalp_verdict"):
+        lines.append("")
+        lines.append("<b>[⚡ 시초가 슈팅 &amp; 역발상 수급 진단]</b>")
+        lines.append(f"• 판정: <b>{html.escape(str(scalp['scalp_verdict']))}</b>")
+        for sig in (scalp.get("scalp_signals") or [])[:4]:
+            lines.append(f"  - {html.escape(str(sig))}")
+        if scalp.get("scalp_strategy"):
+            lines.append(f"• 전략: {html.escape(str(scalp['scalp_strategy']))}")
+
     lines.append("")
     lines.append(f'🔗 <a href="{dart_link}">DART 증권신고서 원문 보기</a>')
 
@@ -919,12 +1044,15 @@ def build_day1_reminder_message(info: Dict[str, Any]) -> str:
     conf_price = info.get("confirmed_price")
     comp_rate = info.get("competition_rate")
     lockup = info.get("lockup_ratio_pct")
+    scalp_verdict = str(info.get("scalp_verdict") or "").strip()
     rcept_no = info.get("rcept_no", "")
     dart_link = f"https://dart.fss.or.kr/dsaf001/main.do?rcpNo={rcept_no}"
 
     price_str = f"{conf_price:,}원" if isinstance(conf_price, (int, float)) else "-"
     comp_str = f"{comp_rate:,.2f}:1" if isinstance(comp_rate, (int, float)) else "-"
     lock_str = f"{lockup:.2f}%" if isinstance(lockup, (int, float)) else "-"
+
+    scalp_line = f"• 시초가/역발상: <b>{html.escape(scalp_verdict)}</b>\n" if scalp_verdict else ""
 
     return (
         f"🔔 <b>[오늘 일반청약 1일차] {corp_name}</b>\n"
@@ -933,6 +1061,7 @@ def build_day1_reminder_message(info: Dict[str, Any]) -> str:
         f"• 대표주관사: <b>{lead_mgr}</b>\n"
         f"• 확정공모가: {price_str}\n"
         f"• 기관경쟁률: {comp_str} (확약 {lock_str})\n"
+        f"{scalp_line}"
         f"• 최종판단: {html.escape(info.get('final_comment', ''))}\n\n"
         f'🔗 <a href="{dart_link}">DART 증권신고서 보기</a>'
     )
@@ -1464,6 +1593,7 @@ def main():
                         "lockup_ratio_pct": raw_data.get("lockup_ratio_pct"),
                         "score": score_res["normalized_score"],
                         "verdict_label": score_res["verdict_label"],
+                        "scalp_verdict": (score_res.get("contrarian_scalp") or {}).get("scalp_verdict", ""),
                         "final_comment": raw_data.get("final_comment", ""),
                         "reminded": False,
                     }
