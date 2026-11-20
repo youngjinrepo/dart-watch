@@ -68,7 +68,7 @@ function schedulerTick() {
     const isIpo0830 = kstHour === 8 && kstMin >= 30;
     const isIpo1600 = kstHour === 16 && kstMin < 30;
     const isIpo2000 = kstHour === 20 && kstMin < 30;
-
+그
     if (isIpo0830) {
       triggerOncePerSlot("ipo.yml", `ipo_${kstDateStr}_08:30`);
     } else if (isIpo1600) {
@@ -82,7 +82,9 @@ function schedulerTick() {
 
   // -------------------------------------------------------------------------
   // 3) 미국 주식 밸류체인 & SEC 레이더 (us_news.yml): 1시간 간격 (월~토 매시 정각)
-  //    (새로 올라온 SEC 공시나 미국 기사가 없으면 AI 호출 없이 1초 만에 조용히 종료됨)
+  //    - 기업 뉴스/SEC 공시와 별개로 미국 장전(23:00 KST, 서머타임 22:00)·
+  //      장후(06:00 KST, 서머타임 05:00)·애프터 장후(10:00 KST, 서머타임 09:00) 시세 분리 발송
+  //    - 새로 올라온 SEC 공시나 미국 기사가 없으면 AI 호출 없이 1초 만에 조용히 종료됨
   // -------------------------------------------------------------------------
   const isMonToSat = kstDayOfWeek >= 1 && kstDayOfWeek <= 6;
   if (isMonToSat && halfHourSlot === "00") {

@@ -19,6 +19,17 @@ on:
         required: false
         default: false
         type: boolean
+      market_session:
+        description: "미국 시세 브리핑 세션 (auto/pre/regular/after/none)"
+        required: false
+        default: "auto"
+        type: choice
+        options:
+          - auto
+          - pre
+          - regular
+          - after
+          - none
 
 concurrency:
   group: ${{ github.workflow }}
@@ -70,6 +81,9 @@ jobs:
           fi
           if [ "${{ inputs.include_recent_sec }}" = "true" ]; then
             ARGS="$ARGS --include-recent-sec"
+          fi
+          if [ -n "${{ inputs.market_session }}" ]; then
+            ARGS="$ARGS --market-session ${{ inputs.market_session }}"
           fi
           python news_main.py $ARGS
 

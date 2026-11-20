@@ -21,7 +21,9 @@
 
 3. **미국 주식 밸류체인 & SEC EDGAR 인텔리전스 레이더 (`news_main.py`)**
    - `config.json`의 `news.us_tickers`에 티커를 지정하면 100% 영문 추론(Thinking)으로 3계층(직접 이슈 / 전방 수요·CapEx / 생태계·경쟁사) 검색 프로필(`us_stock_profiles.json`)을 자동 생성·캐싱합니다.
-   - **실시간 주가·시간외 시세 및 지수 연동**: 브리핑 상단에 대상 종목의 정규장 현재가·등락률·프리/애프터마켓 시세와 **나스닥(`^IXIC`)·S&P 500(`^GSPC`)** 지수를 함께 표시합니다.
+   - **시세 브리핑과 기업 뉴스 브리핑 완전 분리 (3단계 장 세션 알림)**:
+     - **기업 뉴스 & SEC 공시 브리핑**: 1시간마다 신규 소식이 있을 때만 발송 (시세/지수 혼재 제거).
+     - **미국 증시 지수·종목 등락 분리 브리핑**: 미국 동부시간(ET, 서머타임 자동 반영) 기준 **장전(09시 ET / 프리마켓+선물)**, **장후(16시 ET / 정규장 마감)**, **애프터 장후(20시 ET / 시간외 마감)**에 **나스닥(`^IXIC`)·S&P500(`^GSPC`)·나스닥100/S&P500 선물(`NQ=F`, `ES=F`)** 및 감시 종목 등락률을 별도 메시지로 발송 (`sent_market_sessions`로 세션당 1회 보장).
    - **SEC EDGAR 공식 서버**(`data.sec.gov`)에서 `8-K`, `10-Q`, `10-K`, `Form 4`(내부자 매매), `SC 13D/G` 공시를 API 키 없이 감지·요약합니다.
    - **Google News US (영문 RSS)**에서 3계층 뉴스를 수집하고 유사 제목 중복 차단 후 Gemini로 2차 연결고리까지 한국어 브리핑을 생성합니다.
    - 새로 올라온 SEC 공시나 뉴스가 없으면 AI 호출 없이 1초 만에 종료됩니다.
@@ -30,7 +32,7 @@
    - GitHub Actions `schedule(cron)` 지연을 피하기 위해 **Google Apps Script(`google_apps_script.js`)**가 10분마다 실행되며 KST 정시에 각 워크플로우의 `workflow_dispatch` API를 호출합니다.
    - **`dart.yml` (국내 DART 공시)**: 평일 **08:00 ~ 19:00 (KST) 30분 간격**
    - **`ipo.yml` (공모주 스코어링 & 리마인더)**: 평일 **08:30 / 16:00 / 20:00 (KST)** + 일요일 **09:00 (KST) 주간 캘린더** (수동 실행 시 `days`, `weekly_calendar` 입력 가능)
-   - **`us_news.yml` (미국 주식 밸류체인 & SEC 레이더)**: 월~토 **매시 정각 (KST) 1시간 간격** (수동 실행 시 `ticker`, `refresh_profile`, `include_recent_sec` 입력 가능)
+   - **`us_news.yml` (미국 주식 밸류체인 & SEC 레이더)**: 월~토 **매시 정각 (KST) 1시간 간격** (수동 실행 시 `ticker`, `refresh_profile`, `include_recent_sec`, `market_session` 입력 가능)
 
 ---
 
@@ -71,9 +73,12 @@ python ipo_main.py
 python ipo_main.py --dry-run --days 5
 python ipo_main.py --dry-run --weekly-calendar
 
-# 미국 주식 밸류체인 & SEC 레이더 실행 및 로컬 테스트
+# 미국 주식 밸류체인 & SEC 레이더 실행 / 장전·장후·애프터 시세 분리 테스트
 python news_main.py
 python news_main.py --dry-run --ticker CRDO --include-recent-sec
+python news_main.py --dry-run --market-session pre
+python news_main.py --dry-run --market-session regular
+python news_main.py --dry-run --market-session after
 
 # 기업명으로 DART 고유번호(corp_code) 검색 / 당일 DART 응답 디버깅
 python find_corp_code.py
