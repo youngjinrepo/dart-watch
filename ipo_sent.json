@@ -2,23 +2,9 @@
   "sent_rcept_nos": [
     "20261110000253",
     "20261117000109",
-    "20261117000119"
+    "20261117000119",
+    "20261120000119"
   ],
-  "scheduled_reminders": {
-    "01705573": {
-      "corp_name": "유캐스트",
-      "rcept_no": "20261117000109",
-      "subscription_start_date": "2026-11-18",
-      "subscription_date": "2026.11.18 ~ 2026.11.19",
-      "lead_manager": "유진투자증권",
-      "confirmed_price": 19000,
-      "competition_rate": 173.42,
-      "lockup_ratio_pct": 0.57,
-      "score": 42,
-      "verdict_label": "청약 비추천 (D등급)",
-      "final_comment": "차세대 통신 기술력은 기대되나, 미래 추정 실적 의존도가 높고 수요예측 결과가 매우 부진하여 상장 초기 주가 변동성 위험이 큼.",
-      "reminded": true
-    }
-  },
+  "scheduled_reminders": {},
   "last_weekly_calendar_date": ""
 }
