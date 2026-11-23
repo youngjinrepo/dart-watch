@@ -1,6 +1,5 @@
 {
   "seen_articles": [
-    "crdodec2026195000putcrdo261224p00195000interactivestockchart",
     "crdoapr2027130000callcrdo270416c00130000interactivestockchar",
     "crdonov2026155000putcrdo261113p00155000interactivestockchart",
     "predictiontheaistockwallstreetcouldbeunderestimatingfor2027",
@@ -299,7 +298,8 @@
     "goldmansachsnamesfivesoftwarewinnersfor2027microsoftpalantir",
     "aireboundtakesasteralabshigherby21alabnasdaq",
     "amongfivenovember23gainerswithupcomingreportswhichcarriesthe",
-    "whichofthesefiveaimoversischeapestonearningsafternovember23c"
+    "whichofthesefiveaimoversischeapestonearningsafternovember23c",
+    "whataireallycostsafterthepilot"
   ],
   "sent_articles": [
     "credosupcomingearningsshouldchangethegamepreviewnasdaqcrdo",
@@ -507,10 +507,10 @@
     "techreboundsendscredotechnologyhigherby24crdonasdaq",
     "alphabetsspendingcouldunlockamassiveopportunityinvestorsaren",
     "microsoftceosatyanadellajustrevealed50millionaiagentshisnext",
-    "amongfivenovember23gainerswithupcomingreportswhichcarriesthe"
+    "amongfivenovember23gainerswithupcomingreportswhichcarriesthe",
+    "whataireallycostsafterthepilot"
   ],
   "recent_sent_topics": [
-    "Microsoft's Azure Turbo: Beat on Revenue and Earnings, Raised Growth Guidance, Stock Jumped 15% (마이크로소프트 Azure 성장 가속화: 가이던스 상향 및 주가 15% 급등)",
     "Microsoft (MSFT) Q4 FY2026 Earnings Preview: $87.7B Revenue, Azure 40%, FY2027 Capex $255-260B (MSFT 2027 회계연도 설비투자(Capex) 2,600억 달러 육박 전망)",
     "Marvell Stock: Can Its Custom ASIC Pipeline Drive MRVL Above $230? (마벨(Marvell), 커스텀 ASIC 파이프라인 확대로 주가 상승 기대)",
     "onsemi, Nova, Power Integrations, Credo Technology Group Holding, and Navitas Semiconductor shares plummet, what you need to know (onsemi, CRDO 등 반도체 주요 종목 동반 급락에 따른 시장 우려)",
@@ -549,7 +549,8 @@
     "Tech rebound sends Credo Technology higher by 24% (CRDO:NASDAQ) (기술주 반등세에 힘입어 크레도 테크놀로지(CRDO) 주가 24% 급등)",
     "Alphabet’s Spending Could Unlock a Massive Opportunity Investors Aren’t Pricing In (알파벳의 인프라 지출 확대, 시장이 간과하고 있는 거대한 기회 창출)",
     "Microsoft CEO Satya Nadella Just Revealed 50 Million AI Agents. His Next Move Could Be Even Bigger. (마이크로소프트 CEO 사티아 나델라, 5천만 AI 에이전트 공개. 다음 행보는 더 클 수 있다.)",
-    "Among Five November 23 Gainers With Upcoming Reports, Which Carries the Greatest Downside Risk: Ciena (NYSE:CIEN), Semtech (NASDAQ:SMTC), Dell Technologies (NYSE:DELL), CleanSpark (NASDAQ:CLSK) or Credo Technology (NASDAQ:CRDO) (11월 23일 상승 종목 중 향후 실적 발표를 앞둔 Ciena, Semtech, Dell Technologies, CleanSpark, Credo Technology 중 가장 큰 하방 위험을 가진 종목은?)"
+    "Among Five November 23 Gainers With Upcoming Reports, Which Carries the Greatest Downside Risk: Ciena (NYSE:CIEN), Semtech (NASDAQ:SMTC), Dell Technologies (NYSE:DELL), CleanSpark (NASDAQ:CLSK) or Credo Technology (NASDAQ:CRDO) (11월 23일 상승 종목 중 향후 실적 발표를 앞둔 Ciena, Semtech, Dell Technologies, CleanSpark, Credo Technology 중 가장 큰 하방 위험을 가진 종목은?)",
+    "What AI Really Costs After The Pilot (AI 파일럿 이후의 실제 비용: 기업들의 수익성 고민 심화)"
   ],
   "seen_sec_filings": [
     "0001628280-26-068203",
@@ -580,7 +581,8 @@
     "0001628280-26-062039",
     "0001628280-26-061180",
     "0001628280-26-060111",
-    "0001628280-26-059795"
+    "0001628280-26-059795",
+    "0001628280-26-075508"
   ],
   "sent_market_sessions": [
     "2026-11-20_pre",
