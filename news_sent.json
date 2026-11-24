@@ -1,11 +1,5 @@
 {
   "seen_articles": [
-    "msftstockpricefacespressureasmicrosoftoutageand170billionais",
-    "opticaltransportnetworkequipmentmarketto2035hyperscaleand5gd",
-    "microsoftmsftbillsforaiagentsasazurerevenuejumps48",
-    "corneliscn6000networkingplatformdeliversindustryleading16bil",
-    "microsoftmsftstockpriceforecastwallstreetanalystssee22upside",
-    "credotechnologycrdostockpricepredictionmomentumcoolsafterash",
     "globalaispendingtohit405trillionin2027nvidiamicrosoftamazong",
     "cornelisunveilscn6000what800gnetworkingmeansforaiandsupercom",
     "a10stockstrategythatbalancesaigrowthwithcashflow",
@@ -299,7 +293,13 @@
     "microsoftvsmetawhichaiinfrastructurestockhasanedgenow",
     "appliedoptoelectronicssignsmultiyear800gsupplydealwithhypers",
     "asteralabsnasdaqalabsharesclimb232hereswhy",
-    "aoi22blta800gtransceiverscpolasers"
+    "aoi22blta800gtransceiverscpolasers",
+    "crdomay2027290000callcrdo270521c00290000interactivestockchar",
+    "crdonov2026104000callcrdo261127c00104000stockpricenewsquotea",
+    "oracleisahigherleveragecashhungrytwintomicrosoft",
+    "appliedoptoelectronicssignsa22billionsupplydealwithahypersca",
+    "maxlinearstockdrops24inamonthshouldyoubuyitonthedip",
+    "tradfinewsmicronnvidialeadaistockslideasvixjumpsabove32andan"
   ],
   "sent_articles": [
     "credosupcomingearningsshouldchangethegamepreviewnasdaqcrdo",
@@ -536,13 +536,13 @@
     "credosopticalexpansioncanitgaingroundagainstrivals",
     "texaslasermakeraoilandsa22billioncommitmentfromacloudgiant",
     "microsoftvsmetawhichaiinfrastructurestockhasanedgenow",
-    "asteralabsnasdaqalabsharesclimb232hereswhy"
+    "asteralabsnasdaqalabsharesclimb232hereswhy",
+    "oracleisahigherleveragecashhungrytwintomicrosoft",
+    "appliedoptoelectronicssignsa22billionsupplydealwithahypersca",
+    "maxlinearstockdrops24inamonthshouldyoubuyitonthedip",
+    "tradfinewsmicronnvidialeadaistockslideasvixjumpsabove32andan"
   ],
   "recent_sent_topics": [
-    "Microsoft Stock Outlook: Azure Growth and New Copilot Features Face a $50 Billion Spending Test (마이크로소프트 전망: Azure 성장과 코파일럿 신기능, 500억 달러 지출 시험대 직면)",
-    "Marvell Technology's Near 50% Plummet Within a Month Means Little to This Wall Street Pro Who Predicts 270% Gains From Here (마벨 테크놀로지(MRVL) 급락에도 불구하고 월가 전문가는 270% 상승 전망)",
-    "UBS Sees Global AI Investment Hitting $1.4 Tn In 2027, Flags Rising Monetisation Risks (UBS, 2027년 글로벌 AI 투자 1.4조 달러 전망하나 수익화 리스크 경고)",
-    "TradFi News | AI Stocks Rebound After Nasdaq's Worst Week Since 2020 as Nvidia Jumps 9% Premarket; Kospi Lags (엔비디아 9% 급등하며 AI 섹터 반등 주도, 나스닥 최악의 주간 이후 회복세)",
     "Apple vs. Microsoft: Here's Where I'd Put $2,000 Right Now (애플 vs 마이크로소프트: 현시점 2,000달러 투자 적격지는?)",
     "Microsoft Corp Stock (MSFT) Opened Up by 3.39% on Nov 23: A Full Analysis (마이크로소프트(MSFT) 주가 3.39% 상승 출발: AI 인프라 투자 모멘텀 지속)",
     "Keysight Technologies: Co-Packaged Optics Shift Testing Upstream, Upgrade (NYSE:KEYS) (키사이트 테크놀로지스: 공동 패키징 광학(CPO) 전환에 따른 테스트 수요 상향 조정)",
@@ -578,7 +578,11 @@
     "Credo's Optical Expansion: Can It Gain Ground Against Rivals? (크레도의 광학 시장 확장: 경쟁사 대비 우위를 점할 수 있을 것인가?)",
     "Texas laser maker AOI lands a $2.2 billion commitment from a cloud giant (광학 부품사 AOI, 클라우드 거물로부터 22억 달러 규모 공급 계약 체결)",
     "Microsoft vs. Meta: Which AI Infrastructure Stock Has An Edge Now? (마이크로소프트 대 메타: AI 인프라 주식 중 누가 지금 우위를 점하고 있는가?)",
-    "Astera Labs (NASDAQ:ALAB) Shares Climb 23.2% - Here's Why (아스테라 랩스(NASDAQ:ALAB) 주가 23.2% 상승 – 그 이유는?)"
+    "Astera Labs (NASDAQ:ALAB) Shares Climb 23.2% - Here's Why (아스테라 랩스(NASDAQ:ALAB) 주가 23.2% 상승 – 그 이유는?)",
+    "Oracle Is a Higher-Leverage, Cash-Hungry Twin to Microsoft (오라클, 마이크로소프트와 유사한 고레버리지·현금 집약적 구조로 변화)",
+    "Applied Optoelectronics signs a $2.2 billion supply deal with a hyperscale customer (AOI, 하이퍼스케일 고객과 22억 달러 규모 공급 계약 체결)",
+    "MaxLinear Stock Drops 24% in a Month: Should You Buy it on the Dip? (맥스리니어(MXL) 주가 한 달간 24% 급락, 저점 매수 기회인가?)",
+    "TradFi News | Micron, Nvidia Lead AI Stock Slide as VIX Jumps Above 32 and Anthropic Falls Below IPO Price (마이크론·엔비디아 주도 AI 반도체 하락세, VIX 지수 32 돌파)"
   ],
   "seen_sec_filings": [
     "0001628280-26-068203",
