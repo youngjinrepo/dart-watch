@@ -1,8 +1,5 @@
 {
   "seen_articles": [
-    "discerningtheaiindustrialbuildoutthroughanenergylens",
-    "microsoftstockrisesasigniteconferenceputsaigrowthnarrativein",
-    "microsoftmsftisgettingpaidforaiagentsthatswhyimbullish",
     "howismicrosoftnasdaqmsftbalancingazurewithaispending",
     "azuregrew48yetgriffinsecuritiesdowngradedmicrosoftmsftherest",
     "alphabetclimbs3asnvidiasleadershipshakeupputsgooglesaichipsi",
@@ -299,7 +296,10 @@
     "earningscalltranscriptsemtechtopsq32027estimatessharesswing",
     "chinaisonly12hoursbehindusailabsbytedancesreportedazuredealp",
     "microsoftbringspostgresqltofabricbridgingdataandanalytics",
-    "semtechq327slidesdatacentersurgedrivesrecordresultsbyinvesti"
+    "semtechq327slidesdatacentersurgedrivesrecordresultsbyinvesti",
+    "crdojul2027320000putcrdo270716p00320000seasonalreturnschart",
+    "whatmicrosoftmsftsenterpriseaipartnershipsmeanforshareholder",
+    "cornelisexpandsintoaiethernetnetworkingwith800gplatform"
   ],
   "sent_articles": [
     "credosupcomingearningsshouldchangethegamepreviewnasdaqcrdo",
@@ -512,12 +512,12 @@
     "earningscalltranscriptsemtechtopsq32027estimatessharesswing",
     "semtechq327slidesdatacentersurgedrivesrecordresultsbyinvesti",
     "chinaisonly12hoursbehindusailabsbytedancesreportedazuredealp",
-    "microsoftbringspostgresqltofabricbridgingdataandanalytics"
+    "microsoftbringspostgresqltofabricbridgingdataandanalytics",
+    "whatmicrosoftmsftsenterpriseaipartnershipsmeanforshareholder",
+    "cornelisexpandsintoaiethernetnetworkingwith800gplatform",
+    "crdojul2027320000putcrdo270716p00320000seasonalreturnschart"
   ],
   "recent_sent_topics": [
-    "MaxLinear’s AI Optical Business Surged 136% and the Stock Jumped 84% Overnight - Is MXL a Buy at $63? (맥스리니어(MaxLinear) AI 광통신 사업 136% 급증 및 주가 84% 폭등 - 시사점은?)",
-    "Credo Technology Group (CRDO) Shares Plunge Nearly 14% Amid Tech Sector Sell-Off (Credo Technology (CRDO), 기술주 섹터 매도세 속에 주가 약 14% 급락)",
-    "CRDO Jan 2028 165.000 call (CRDO280121C00165000) Seasonal returns chart (CRDO 2028년 1월 만기 행사가 $165 콜옵션 포착 및 장기 수익 차트 분석)",
     "CRDO Nov 2026 75.000 put (CRDO261127P00075000) interactive stock chart – Yahoo Finance (CRDO 2026년 11월 만기 행사가 $75 풋옵션 거래 데이터 포착)",
     "Bank of America sends strong signal to Microsoft stock investors (뱅크오브아메리카, 마이크로소프트 투자자들에게 강력한 매수 신호 발송)",
     "Key facts: Anthropic's $47.2B Azure Pledge; Intel Chips; MSFT $1B Stake (앤스로픽, 마이크로소프트 Azure에 472억 달러 사용 약정 및 10억 달러 지분 투자)",
@@ -554,7 +554,10 @@
     "Earnings call transcript: Semtech tops Q3 2027 estimates, shares swing (Semtech 3분기 실적 예상치 상회, 데이터센터 광학 부품 성장세 확인)",
     "Semtech Q3’27 slides: data center surge drives record results By Investing.com (Semtech 3분기 실적 발표: 데이터센터 부문 급증으로 역대급 실적 달성)",
     "China Is “Only 12 Hours” Behind US AI Labs. ByteDance’s Reported Azure Deal Puts Microsoft in the Middle (중국 AI 기술력 추격 가속화 및 바이트댄스의 Azure 이용 계약 보도)",
-    "Microsoft Brings PostgreSQL to Fabric, Bridging Data and Analytics (마이크로소프트, Fabric에 PostgreSQL 통합하며 데이터 분석 생태계 확장)"
+    "Microsoft Brings PostgreSQL to Fabric, Bridging Data and Analytics (마이크로소프트, Fabric에 PostgreSQL 통합하며 데이터 분석 생태계 확장)",
+    "What Microsoft (MSFT)'s Enterprise AI Partnerships Mean For Shareholders (마이크로소프트(MSFT)의 기업용 AI 파트너십 확대가 주주에게 갖는 의미)",
+    "Cornelis Expands Into AI Ethernet Networking With 800G Platform (코넬리스(Cornelis), 800G 플랫폼으로 AI 이더넷 네트워킹 시장 진출 확대)",
+    "CRDO Jul 2027 320.000 put (CRDO270716P00320000) Seasonal returns chart (CRDO 2027년 7월 만기 행사가 $320 풋옵션 거래 및 계절적 수익률 차트 분석)"
   ],
   "seen_sec_filings": [
     "0001628280-26-068203",
@@ -593,6 +596,7 @@
     "2026-11-20_regular",
     "2026-11-20_after",
     "2026-11-23_pre",
-    "2026-11-23_regular"
+    "2026-11-23_regular",
+    "2026-11-23_after"
   ]
 }
