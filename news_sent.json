@@ -1,9 +1,5 @@
 {
   "seen_articles": [
-    "onemagnificentsevenstocklooksreadyforitsnextbigmove",
-    "microsoftovertakesnvidiaandregainssecondplaceamongthemostval",
-    "nvidiasupplierfilings6binwrittendeals1namedbuyer",
-    "cancredostockdoublefromhere",
     "coherentsinks9lumentumdown8asaihardwarestocksslideonnvidiale",
     "whataiatworkreallycosts",
     "microsoftdatashowsclaudeisstallingagainstcopilotinoffice",
@@ -299,7 +295,11 @@
     "crdotargets600mopticalsales226jumpunconfirmed",
     "microsoftignite2026copilotasworkosagentgovernanceexpands",
     "anthropicstockfalls33as900billionaispendingraisesrisks",
-    "elastictargetsdatamovementcostswithdatafederation"
+    "elastictargetsdatamovementcostswithdatafederation",
+    "crdodec2026150000putcrdo261211p00150000interactivestockchart",
+    "beforecredoreportswatchcashnotsales",
+    "metallicconduitsmarketforecastto2035datacenterbuildoutsandgr",
+    "techstockselloffdown13ismicrosoftabuynow"
   ],
   "sent_articles": [
     "credosupcomingearningsshouldchangethegamepreviewnasdaqcrdo",
@@ -580,12 +580,12 @@
     "microsofttimetosellbeforedepreciationeatsprofitsratingdowngr",
     "crdotargets600mopticalsales226jumpunconfirmed",
     "microsoftignite2026copilotasworkosagentgovernanceexpands",
-    "elastictargetsdatamovementcostswithdatafederation"
+    "elastictargetsdatamovementcostswithdatafederation",
+    "beforecredoreportswatchcashnotsales",
+    "techstockselloffdown13ismicrosoftabuynow",
+    "metallicconduitsmarketforecastto2035datacenterbuildoutsandgr"
   ],
   "recent_sent_topics": [
-    "Credo Technology options imply 13% move on earnings (크레도 테크놀로지, 실적 발표 앞두고 옵션 시장에서 13% 변동성 시사)",
-    "Microsoft Corporation (MSFT) Is Facing AI Spending Fears: Could Its Cloud Growth Change the Narrative? (마이크로소프트(MSFT), AI 지출 우려 직면: 클라우드 성장이 서사를 바꿀 수 있을까?)",
-    "Microsoft Slips Below $500 as 24-Hour Cloud Outage Spurs Internal 'Code Red' (마이크로소프트, 24시간 클라우드 서비스 중단으로 '코드 레드' 발령 후 500달러 하회)",
     "Microsoft reveals 50M AI agents, plans tool to measure AI costs and returns. (마이크로소프트, 5,000만 개의 AI 에이전트 공개 및 AI 투자 수익률(ROI) 측정 도구 도입)",
     "Applied Optoelectronics secures 2.2 billion dollar multi-year contract for 800G transceivers (AOI, 하이퍼스케일러와 22억 달러 규모 800G 광트랜시버 공급 계약 체결)",
     "Teradyne, Entegris, Penguin Solutions, Kulicke and Soffa, and Astera Labs stocks trade down, what you need to know (아스테라 랩스 등 주요 AI 반도체 기업 주가 하락세 지속)",
@@ -622,7 +622,10 @@
     "Microsoft: Time To Sell Before Depreciation Eats Profits (Rating Downgrade) (마이크로소프트: 감가상각비가 이익을 잠식하기 전 매도할 시점 (투자 의견 하향))",
     "CRDO Targets $600M Optical Sales; 22.6% Jump Unconfirmed (크레도(CRDO), 광학 부문 매출 6억 달러 목표 설정 및 주가 급등 가능성)",
     "Microsoft Ignite 2026: Copilot as work OS, agent governance expands (마이크로소프트 이그나이트 2026: 코파일럿의 업무 OS화 및 AI 에이전트 거버넌스 확장)",
-    "Elastic Targets Data Movement Costs with Data Federation (엘라스틱(Elastic), 데이터 페더레이션을 통한 데이터 이동 비용 절감 추진)"
+    "Elastic Targets Data Movement Costs with Data Federation (엘라스틱(Elastic), 데이터 페더레이션을 통한 데이터 이동 비용 절감 추진)",
+    "Before Credo Reports, Watch Cash, Not Sales (크레도 실적 발표 전, 매출보다 '현금 흐름'에 주목해야)",
+    "Tech Stock Sell-Off: Down 13%, Is Microsoft a Buy Now? (기술주 매도세 속 13% 하락한 마이크로소프트, 지금이 매수 기회인가?)",
+    "Metallic Conduits Market Forecast to 2035: Data Center Buildouts and Grid Upgrades Drive Forward Growth (2035년 금속 도관 시장 전망: 데이터센터 증설과 그리드 업그레이드가 성장 견인)"
   ],
   "seen_sec_filings": [
     "0001628280-26-068203",
