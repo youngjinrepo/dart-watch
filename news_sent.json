@@ -1,7 +1,5 @@
 {
   "seen_articles": [
-    "microsoftdatashowsclaudeisstallingagainstcopilotinoffice",
-    "tokeneconomizerlearningfromexperiencetomakeaicodingagentsmor",
     "cloudspendgovernanceshouldstartbeforethefirstinvoice",
     "microsofttodebutproductsaimedatreducingcustomersaicosts",
     "alphabetincclasscstockgoogmoveddownby339onnov16driversbehind",
@@ -299,7 +297,9 @@
     "metallicconduitsmarketforecastto2035datacenterbuildoutsandgr",
     "techstockselloffdown13ismicrosoftabuynow",
     "microsoftinvitecopilottothanksgivingdinnernasdaqmsft",
-    "from800gto16twhythermoelectriccoolingteccouldbecomeacritical"
+    "from800gto16twhythermoelectriccoolingteccouldbecomeacritical",
+    "howisacceleratingazuregrowthshapingmicrosoftnasdaqmsftasaisp",
+    "standinginthelightappliedoptoelectronicsaaoiussignsanotherlo"
   ],
   "sent_articles": [
     "credosupcomingearningsshouldchangethegamepreviewnasdaqcrdo",
@@ -585,10 +585,10 @@
     "techstockselloffdown13ismicrosoftabuynow",
     "metallicconduitsmarketforecastto2035datacenterbuildoutsandgr",
     "microsoftinvitecopilottothanksgivingdinnernasdaqmsft",
-    "from800gto16twhythermoelectriccoolingteccouldbecomeacritical"
+    "from800gto16twhythermoelectriccoolingteccouldbecomeacritical",
+    "howisacceleratingazuregrowthshapingmicrosoftnasdaqmsftasaisp"
   ],
   "recent_sent_topics": [
-    "Teradyne, Entegris, Penguin Solutions, Kulicke and Soffa, and Astera Labs stocks trade down, what you need to know (아스테라 랩스 등 주요 AI 반도체 기업 주가 하락세 지속)",
     "Applied Optoelectronics signs multiyear long-term agreement with datacenter (어플라이드 옵토일렉트로닉스(AOI), 데이터센터 고객과 다년 공급 계약 체결)",
     "From Smiling to Selling: Why Credo Technology (CRDO) is Getting Hammered (급등에서 매도로: 크레도 테크놀로지(CRDO) 주가 하락의 배경 분석)",
     "Own Credo Stock? Watch Its Inventory On Dec 1 (크레도(CRDO) 주주라면 12월 1일 실적 발표 시 '재고 수준'을 주목하라)",
@@ -627,7 +627,8 @@
     "Tech Stock Sell-Off: Down 13%, Is Microsoft a Buy Now? (기술주 매도세 속 13% 하락한 마이크로소프트, 지금이 매수 기회인가?)",
     "Metallic Conduits Market Forecast to 2035: Data Center Buildouts and Grid Upgrades Drive Forward Growth (2035년 금속 도관 시장 전망: 데이터센터 증설과 그리드 업그레이드가 성장 견인)",
     "Microsoft: Invite Copilot To Thanksgiving Dinner (NASDAQ:MSFT) (마이크로소프트: 코파일럿(Copilot)의 일상 침투 가속화와 AI 수익화 전망)",
-    "From 800G to 1.6T: Why Thermoelectric Cooling (TEC) Could Become a Critical Part of the AI Optical Interconnect Supply Chain (800G에서 1.6T로: 열전냉각(TEC) 기술이 AI 광학 연결 공급망의 핵심이 되는 이유)"
+    "From 800G to 1.6T: Why Thermoelectric Cooling (TEC) Could Become a Critical Part of the AI Optical Interconnect Supply Chain (800G에서 1.6T로: 열전냉각(TEC) 기술이 AI 광학 연결 공급망의 핵심이 되는 이유)",
+    "How Is Accelerating Azure Growth Shaping Microsoft (NASDAQ:MSFT) as AI Spending Climbs? (가속화되는 Azure 성장: AI 지출 증가가 마이크로소프트(MSFT)에 미치는 영향은?)"
   ],
   "seen_sec_filings": [
     "0001628280-26-068203",
