@@ -1,7 +1,5 @@
 {
   "seen_articles": [
-    "wallstreetiswatchingnvidiathisaistockdeservesattentiontoo",
-    "nebiusplanstospendmorethan3forevery1ofrevenuenextyearthestoc",
     "microsoftstockhasgrownroughly14foldsincesatyanadellabecamece",
     "thezacksanalystbloghighlightsnvidiaalphabetamazonandmicrosof",
     "cloudaitodayhealthcareaispendingsurgestransformingdrugdevelo",
@@ -299,7 +297,9 @@
     "crdonov2026121000putcrdo261127p00121000interactivestockchart",
     "crdonov202697000callcrdo261127c00097000interactivestockchart",
     "credotechnologygroupholdingcrdostockahiddenvaluetrapunpackin",
-    "azureaigatewayreachesgeneralavailabilityasastandaloneservice"
+    "azureaigatewayreachesgeneralavailabilityasastandaloneservice",
+    "crdodec2026117000callcrdo261204c00117000interactivestockchar",
+    "crdodec2026175000putcrdo261231p00175000interactivestockchart"
   ],
   "sent_articles": [
     "credosupcomingearningsshouldchangethegamepreviewnasdaqcrdo",
@@ -600,10 +600,10 @@
     "fpsvsmxlwhichstockcangainmorefromtheaibuildout",
     "microsoftaftertheselloffa24xpewitha47billioncustomernasdaqms",
     "nearequal664b678bbacklogswhyoraclesaiconcentrationriskdiffer",
-    "azureaigatewayreachesgeneralavailabilityasastandaloneservice"
+    "azureaigatewayreachesgeneralavailabilityasastandaloneservice",
+    "crdodec2026117000callcrdo261204c00117000interactivestockchar"
   ],
   "recent_sent_topics": [
-    "Microsoft Stock Drops Over 2.8% Amid AI Spending Concerns, Trump Tariffs, and Cloud Outage (마이크로소프트 주가 2.8% 하락: AI 지출 우려, 트럼프 관세 및 클라우드 중단 여파)",
     "Astera Labs Is Down Over 60% From Its Peak. Is It Time to Sell, or Load Up? (고점 대비 60% 하락한 아스테라 랩스: 매도 시점인가, 추가 매수 기회인가?)",
     "Microsoft (MSFT) Deepens Europe Sovereign AI Push With Expanded Public Sector Cloud Pact (마이크로소프트, 유럽 공공 부문 클라우드 협약 확대로 '소버린 AI' 공략 가속화)",
     "Why Is Credo Stock Going Up? (크레도(CRDO) 주가 반등의 배경은 무엇인가?)",
@@ -642,7 +642,8 @@
     "FPS vs. MXL: Which Stock Can Gain More From the AI Buildout? (FPS vs MXL: AI 인프라 구축의 진정한 수혜주는?)",
     "Microsoft After The Selloff: A 24x P/E With A $47 Billion Customer (NASDAQ:MSFT) (매도세 이후의 마이크로소프트: 470억 달러 규모의 고객사를 보유한 PER 24배의 기회)",
     "Near-Equal ~$664B–$678B Backlogs: Why Oracle’s AI Concentration Risk Differs From Microsoft's (약 6,700억 달러의 수주 잔고: 오라클과 마이크로소프트의 AI 집중 리스크 차이점 분석)",
-    "Azure AI Gateway Reaches General Availability as a Standalone Service (애저(Azure) AI 게이트웨이 정식 출시: 독립형 서비스로 제공)"
+    "Azure AI Gateway Reaches General Availability as a Standalone Service (애저(Azure) AI 게이트웨이 정식 출시: 독립형 서비스로 제공)",
+    "CRDO Dec 2026 117.000 call (CRDO261204C00117000) interactive stock chart (CRDO 2026년 12월 만기 행사가 $117 콜옵션 거래 포착)"
   ],
   "seen_sec_filings": [
     "0001628280-26-068203",
